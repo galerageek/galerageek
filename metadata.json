@@ -1,0 +1,7 @@
+{
+  "name": "Galera Geek - Loja de TCG & Cards Colecionáveis",
+  "description": "Loja e catálogo online oficial da Galera Geek para venda de cards de TCG (Magic, Pokémon, Lorcana, Riftbound, One Piece), carrinho inteligente, controle de estoque e checkout via WhatsApp e PIX.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
