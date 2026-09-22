@@ -71,7 +71,7 @@ export const BannerHero: React.FC<BannerHeroProps> = ({ config, totalCardsCount 
                 </div>
                 <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-200">
                   <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Envio com Toploader Rígido</span>
+                  <span>Envio Seguro e Protegido</span>
                 </div>
                 {config.pixDiscountPercent > 0 && (
                   <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800 text-emerald-400 font-semibold">

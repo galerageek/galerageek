@@ -7,7 +7,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   pixKey: 'pix@galerageek.com.br',
   pixKeyType: 'Email',
   logoUrl: '',
-  bannerNotice: '⚡ ENVIOS PARA TODO O BRASIL • CARTA REGISTRADA COM SEGURO & TOPLOADER • 5% OFF NO PIX',
+  bannerNotice: '⚡ ENVIOS PARA TODO O BRASIL • CARTA REGISTRADA COM SEGURO • 5% OFF NO PIX',
   heroDescription: 'Encontre seus singles favoritos de Magic: The Gathering, Pokémon, Disney Lorcana, Riftbound e One Piece com estoque real, transparência e cuidado de quem também joga.',
   pixDiscountPercent: 5,
   shippingCartaRegistrada: 15.00,

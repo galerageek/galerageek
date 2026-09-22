@@ -141,7 +141,7 @@ export const generateWhatsAppOrderMessage = (
 
   const shippingName =
     shippingType === 'carta'
-      ? 'Carta Registrada (com seguro & toploader)'
+      ? 'Carta Registrada (com seguro)'
       : shippingType === 'pac'
       ? 'PAC Correios'
       : shippingType === 'sedex'

@@ -1588,7 +1588,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     type="text"
                     value={configForm.bannerNotice}
                     onChange={(e) => setConfigForm({ ...configForm, bannerNotice: e.target.value })}
-                    placeholder="⚡ ENVIOS PARA TODO O BRASIL • CARTA REGISTRADA COM SEGURO & TOPLOADER • 5% OFF NO PIX"
+                    placeholder="⚡ ENVIOS PARA TODO O BRASIL • CARTA REGISTRADA COM SEGURO • 5% OFF NO PIX"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-amber-500"
                   />
                   <span className="text-[10px] text-slate-500 mt-1 block">
@@ -1764,7 +1764,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     onChange={(e) => setConfigForm({ ...configForm, shippingCartaRegistrada: parseFloat(e.target.value) || 0 })}
                     className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-semibold focus:outline-none focus:border-amber-500"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Com seguro e toploader</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Com seguro e rastreio</span>
                 </div>
 
                 <div>

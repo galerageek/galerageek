@@ -208,7 +208,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Truck className="w-4 h-4 text-cyan-400" />
-                      Opções de Envio (com Toploader & Sleeve)
+                      Opções de Envio
                     </span>
                   </div>
 

@@ -452,7 +452,7 @@ export const CardPrintsSelectorModal: React.FC<CardPrintsSelectorModalProps> = (
                     <div>
                       <span className="text-white text-sm font-bold block">Tirar foto ou enviar imagem</span>
                       <p className="text-xs text-slate-400 mt-1">
-                        Ideal para mostrar a foto do card físico real no toploader ou pasta
+                        Ideal para mostrar a foto do card físico real no sleeve ou pasta
                       </p>
                     </div>
                     <input

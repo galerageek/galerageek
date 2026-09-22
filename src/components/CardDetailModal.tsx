@@ -194,7 +194,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
                     </div>
                     <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
                       <span className="text-[11px] text-slate-400 block font-medium">Proteção</span>
-                      <span className="font-semibold text-cyan-300">Toploader + Sleeve</span>
+                      <span className="font-semibold text-cyan-300">Sleeve Protetor</span>
                     </div>
                   </div>
                 </div>
@@ -211,10 +211,10 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
                       Sabemos o valor da sua coleção. Por isso, cada card avulso comprado na <strong>Galera Geek</strong> é embalado com rigor profissional:
                     </p>
                     <ul className="space-y-1.5 list-disc list-inside text-slate-400 pt-1">
-                      <li><strong>Double Sleeve</strong> protetor individual</li>
-                      <li><strong>Toploader Rígido</strong> para blindagem contra dobras</li>
-                      <li><strong>Sanduíche de papelão reforçado</strong> e fita de segurança</li>
-                      <li>Envelope bolha resistente à água e código de rastreamento direto nos Correios</li>
+                      <li><strong>Sleeve protetor individual</strong></li>
+                      <li><strong>Proteção reforçada</strong> contra dobras e impactos</li>
+                      <li><strong>Envelope seguro</strong> e fita de proteção</li>
+                      <li>Código de rastreamento direto nos Correios</li>
                     </ul>
                   </div>
                 </div>
