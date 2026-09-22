@@ -37,8 +37,15 @@ export const loadStoredCards = (): CardItem[] => {
           imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}&output=webp`;
         }
 
-        // If rift card, ensure name, code, set, attributes and real images are updated to clean official values
+        // If initial card exists, ensure clean canonical name without parentheses
         let name = c.name;
+        if (initial && initial.name) {
+          name = initial.name;
+        } else if (name && /\([^)]*\)/.test(name)) {
+          // If user had cards stored with parentheses, clean them
+          name = name.replace(/\s*\([^)]*\)/g, '').trim();
+        }
+
         let setName = c.setName;
         let setCode = c.setCode;
         let cardNumber = c.cardNumber;

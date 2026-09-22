@@ -40,7 +40,7 @@ export const INITIAL_CARDS: CardItem[] = [
   // --- MAGIC: THE GATHERING ---
   {
     id: 'mtg-one-ring',
-    name: 'The One Ring (O Um Anel)',
+    name: 'The One Ring',
     game: 'magic',
     setName: 'The Lord of the Rings: Tales of Middle-earth',
     setCode: 'LTR',
@@ -82,7 +82,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'mtg-sol-ring',
-    name: 'Sol Ring (Anel Solar)',
+    name: 'Anel Solar',
     game: 'magic',
     setName: 'Commander Masters',
     setCode: 'CMM',
@@ -103,7 +103,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'mtg-mana-crypt',
-    name: 'Mana Crypt (Cripta de Mana)',
+    name: 'Mana Crypt',
     game: 'magic',
     setName: 'Double Masters',
     setCode: '2XM',
@@ -124,7 +124,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'mtg-doubling-season',
-    name: 'Estação de Duplicação (Doubling Season)',
+    name: 'Estação de Duplicação',
     game: 'magic',
     setName: 'Wilds of Eldraine: Enchanting Tales',
     setCode: 'WOT',
@@ -147,7 +147,7 @@ export const INITIAL_CARDS: CardItem[] = [
   // --- POKÉMON TCG ---
   {
     id: 'pkmn-charizard-151',
-    name: 'Charizard ex (Special Illustration Rare)',
+    name: 'Charizard ex',
     game: 'pokemon',
     setName: 'Escarlate e Violeta: 151',
     setCode: 'MEW',
@@ -168,7 +168,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'pkmn-pikachu-van-gogh',
-    name: 'Pikachu with Grey Felt Hat (Van Gogh Promo)',
+    name: 'Pikachu with Grey Felt Hat',
     game: 'pokemon',
     setName: 'SVP Black Star Promos',
     setCode: 'SVP',
@@ -189,7 +189,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'pkmn-giratina-v-alt',
-    name: 'Giratina V (Alternate Full Art)',
+    name: 'Giratina V',
     game: 'pokemon',
     setName: 'Espada e Escudo: Origem Perdida',
     setCode: 'LOR',
@@ -210,7 +210,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'pkmn-mew-ex-shiny',
-    name: 'Mew ex (Special Illustration Rare - Shiny)',
+    name: 'Mew ex',
     game: 'pokemon',
     setName: 'Destinos de Paldea',
     setCode: 'PAF',
@@ -231,7 +231,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'pkmn-gardevoir-ex',
-    name: 'Gardevoir ex (Special Illustration Rare)',
+    name: 'Gardevoir ex',
     game: 'pokemon',
     setName: 'Escarlate e Violeta: Base',
     setCode: 'SVI',
@@ -254,7 +254,7 @@ export const INITIAL_CARDS: CardItem[] = [
   // --- DISNEY LORCANA ---
   {
     id: 'lorcana-elsa',
-    name: 'Elsa - Spirit of Winter (Enchanted)',
+    name: 'Elsa - Spirit of Winter',
     game: 'lorcana',
     setName: 'The First Chapter',
     setCode: 'TFC',
@@ -296,7 +296,7 @@ export const INITIAL_CARDS: CardItem[] = [
   },
   {
     id: 'lorcana-stitch-rock-star',
-    name: 'Stitch - Rock Star (Enchanted)',
+    name: 'Stitch - Rock Star',
     game: 'lorcana',
     setName: 'The First Chapter',
     setCode: 'TFC',
@@ -405,7 +405,7 @@ export const INITIAL_CARDS: CardItem[] = [
   // --- ONE PIECE CARD GAME ---
   {
     id: 'op-luffy-gear5',
-    name: 'Monkey D. Luffy (Gear 5 Manga Secret Rare)',
+    name: 'Monkey D. Luffy',
     game: 'onepiece',
     setName: 'Awakening of the New Era',
     setCode: 'OP-05',
@@ -419,14 +419,14 @@ export const INITIAL_CARDS: CardItem[] = [
     price: 4200.00,
     originalPrice: 4600.00,
     stockQuantity: 1,
-    description: 'O card mais lendário de One Piece com fundo original de painéis do mangá de Eiichiro Oda. Perfeição colecionável.',
+    description: 'O card mais lendário de One Piece com fundo original de painéis do mangá de Eiichiro Oda (Gear 5 Manga). Perfeição colecionável.',
     cardType: 'Personagem Supernovas / Chapéu de Palha',
     colorOrAttribute: 'Roxo',
     featured: true
   },
   {
     id: 'op-zoro-leader',
-    name: 'Roronoa Zoro (Parallel Leader)',
+    name: 'Roronoa Zoro',
     game: 'onepiece',
     setName: 'Romance Dawn',
     setCode: 'OP-01',
@@ -440,14 +440,14 @@ export const INITIAL_CARDS: CardItem[] = [
     price: 310.00,
     originalPrice: 340.00,
     stockQuantity: 2,
-    description: 'O Líder Vermelho mais temido e rápido de One Piece. Dá +1000 de ataque para todos os seus personagens.',
+    description: 'O Líder Vermelho mais temido e rápido de One Piece (Arte Paralela). Dá +1000 de ataque para todos os seus personagens.',
     cardType: 'Líder Supernovas / Piratas do Chapéu de Palha',
     colorOrAttribute: 'Vermelho',
     featured: false
   },
   {
     id: 'op-nami-parallel',
-    name: 'Nami (Parallel Rare)',
+    name: 'Nami',
     game: 'onepiece',
     setName: 'Romance Dawn',
     setCode: 'OP-01',

@@ -87,6 +87,9 @@ export const LigaExportModal: React.FC<LigaExportModalProps> = ({
             </div>
             <ul className="space-y-1.5 text-[11px] text-slate-300 list-disc list-inside">
               <li>
+                <strong className="text-white">Nomes Limpos e Separados:</strong> O nome em português vai na coluna <code className="text-amber-300 font-mono">Card (PT)</code> e o nome em inglês na coluna <code className="text-amber-300 font-mono">Card (EN)</code>, removendo textos e parênteses confusos para reconhecimento 100% automático na Liga.
+              </li>
+              <li>
                 <strong className="text-white">Idioma:</strong> Convertido estritamente para as siglas aceitas pela Liga (<code className="text-amber-300 font-mono">BR</code>, <code className="text-amber-300 font-mono">EN</code>, <code className="text-amber-300 font-mono">JP</code>, etc.).
               </li>
               <li>

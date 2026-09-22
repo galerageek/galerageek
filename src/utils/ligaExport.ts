@@ -148,6 +148,54 @@ export function getLigaExtras(card: CardItem): string {
 }
 
 /**
+ * Remove qualquer anotação entre parênteses para manter apenas o nome limpo do card.
+ * Exemplo: "Sol Ring (Anel Solar)" -> "Sol Ring"
+ * Exemplo: "Anel Solar (Sol Ring)" -> "Anel Solar"
+ * Exemplo: "Charizard ex (Special Illustration Rare)" -> "Charizard ex"
+ */
+export function sanitizeCardName(rawName?: string): string {
+  if (!rawName) return '';
+  return rawName.replace(/\s*\([^)]*\)/g, '').trim();
+}
+
+/**
+ * Se o card possuir ambos os nomes separados por parênteses (ex: "Sol Ring (Anel Solar)" ou "Anel Solar (Sol Ring)"),
+ * extrai o nome principal e o nome secundário (traduzido).
+ */
+export function extractCleanNames(rawName: string, language?: string): { namePT: string; nameEN: string } {
+  const clean = (rawName || '').trim();
+  const match = clean.match(/^([^(]+)\s*\(([^)]+)\)$/);
+  const langSigla = normalizeLigaLanguage(language);
+  const isPT = langSigla === 'BR';
+
+  if (match) {
+    const first = match[1].trim();
+    const inside = match[2].trim();
+
+    // Se o idioma for Português (BR) e o primeiro estiver em inglês ou pt
+    if (isPT) {
+      // Se dentro for o nome em inglês ou vice-versa, separamos
+      return {
+        namePT: sanitizeCardName(first),
+        nameEN: sanitizeCardName(inside)
+      };
+    } else {
+      return {
+        namePT: sanitizeCardName(inside),
+        nameEN: sanitizeCardName(first)
+      };
+    }
+  }
+
+  const base = sanitizeCardName(clean);
+  if (isPT) {
+    return { namePT: base, nameEN: '' };
+  } else {
+    return { namePT: '', nameEN: base };
+  }
+}
+
+/**
  * Cabeçalho oficial padrão da LigaMagic (CSV):
  * Edicao (PTBR),Edicao (EN),Edicao (Sigla),Card (PT),Card (EN),Quantidade,Qualidade (M NM SP MP HP D),Idioma (BR EN DE ES FR IT JP KO RU TW),Raridade (M R U C),Cor (W U B R G M A L),Extras,Card #,Comentario
  */
@@ -180,13 +228,12 @@ export function generateLigaCSV(cards: CardItem[], targetGame?: TCGGame): string
     const corSigla = normalizeLigaColor(card.colorOrAttribute);
     const extras = getLigaExtras(card);
 
-    // Se o card for em português, Card (PT) é preenchido e Card (EN) também pode receber o nome ou ficar espelhado
-    const isPT = langSigla === 'BR';
-    const cardPT = isPT ? card.name : '';
-    const cardEN = !isPT ? card.name : (card.name);
+    // Nomes limpos e separados sem parênteses:
+    // A Liga exige que Card (PT) tenha apenas o nome em português e Card (EN) apenas o nome em inglês.
+    const { namePT, nameEN } = extractCleanNames(card.name, card.language);
 
     // Edição
-    const edicaoPTBR = ''; // pode ficar em branco se não disponível em separado
+    const edicaoPTBR = ''; // opcional
     const edicaoEN = card.setName || '';
     const edicaoSigla = (card.setCode || '').toUpperCase();
 
@@ -201,8 +248,8 @@ export function generateLigaCSV(cards: CardItem[], targetGame?: TCGGame): string
       escapeCSVField(edicaoPTBR),
       escapeCSVField(edicaoEN),
       escapeCSVField(edicaoSigla),
-      escapeCSVField(cardPT),
-      escapeCSVField(cardEN),
+      escapeCSVField(namePT),
+      escapeCSVField(nameEN),
       escapeCSVField(quantidade),
       escapeCSVField(condSigla),
       escapeCSVField(langSigla),
@@ -303,9 +350,7 @@ export function generateLigaExcelXLS(cards: CardItem[], targetGame?: TCGGame): s
     const rarSigla = normalizeLigaRarity(card.rarity);
     const corSigla = normalizeLigaColor(card.colorOrAttribute);
     const extras = getLigaExtras(card);
-    const isPT = langSigla === 'BR';
-    const cardPT = isPT ? card.name : '';
-    const cardEN = !isPT ? card.name : card.name;
+    const { namePT, nameEN } = extractCleanNames(card.name, card.language);
     const edicaoEN = card.setName || '';
     const edicaoSigla = (card.setCode || '').toUpperCase();
     const quantidade = Math.max(1, card.stockQuantity || 1);
@@ -316,8 +361,8 @@ export function generateLigaExcelXLS(cards: CardItem[], targetGame?: TCGGame): s
     xml += `    <Cell><Data ss:Type="String"></Data></Cell>\n`; // Edicao (PTBR)
     xml += `    <Cell><Data ss:Type="String">${escapeXml(edicaoEN)}</Data></Cell>\n`; // Edicao (EN)
     xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(edicaoSigla)}</Data></Cell>\n`; // Edicao (Sigla)
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(cardPT)}</Data></Cell>\n`; // Card (PT)
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(cardEN)}</Data></Cell>\n`; // Card (EN)
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(namePT)}</Data></Cell>\n`; // Card (PT)
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(nameEN)}</Data></Cell>\n`; // Card (EN)
     xml += `    <Cell ss:StyleID="Number"><Data ss:Type="Number">${quantidade}</Data></Cell>\n`; // Quantidade
     xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(condSigla)}</Data></Cell>\n`; // Qualidade
     xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(langSigla)}</Data></Cell>\n`; // Idioma
