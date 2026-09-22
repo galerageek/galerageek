@@ -5,7 +5,8 @@ import {
   StoreConfig, 
   TCGGame, 
   CardCondition, 
-  CardLanguage 
+  CardLanguage,
+  AdminRole 
 } from './types';
 import { 
   loadStoredCards, 
@@ -13,7 +14,8 @@ import {
   loadStoredConfig, 
   saveStoredConfig,
   getStoredAdminAuth,
-  setStoredAdminAuth
+  setStoredAdminAuth,
+  getStoredAdminUser
 } from './utils/storage';
 import { Navbar } from './components/Navbar';
 import { BannerHero } from './components/BannerHero';
@@ -55,6 +57,7 @@ export default function App() {
 
   // State: Admin Auth & Session
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => getStoredAdminAuth());
+  const [currentAdminUser, setCurrentAdminUser] = useState<{ username: string; role: AdminRole; name: string } | null>(() => getStoredAdminUser());
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   // State: Filters
@@ -264,9 +267,13 @@ export default function App() {
     }
   };
 
-  const handleAdminLoginSuccess = (remember: boolean) => {
+  const handleAdminLoginSuccess = (
+    remember: boolean,
+    user: { username: string; role: AdminRole; name: string }
+  ) => {
     setIsAdminAuthenticated(true);
-    setStoredAdminAuth(remember);
+    setCurrentAdminUser(user);
+    setStoredAdminAuth(remember, user);
     setIsAdminLoginOpen(false);
     setCurrentView('admin');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -274,7 +281,8 @@ export default function App() {
 
   const handleAdminLogout = () => {
     setIsAdminAuthenticated(false);
-    setStoredAdminAuth(false);
+    setCurrentAdminUser(null);
+    setStoredAdminAuth(false, null);
     setCurrentView('store');
     if (window.location.hash) {
       window.history.replaceState(null, '', window.location.pathname);
@@ -298,6 +306,7 @@ export default function App() {
         <AdminPage
           cards={cards}
           config={config}
+          currentUser={currentAdminUser}
           onUpdatePriceAndStock={handleUpdatePriceAndStock}
           onUpdateCard={handleUpdateCard}
           onDeleteCard={handleDeleteCard}
@@ -319,6 +328,7 @@ export default function App() {
           isOpen={isAdminLoginOpen}
           onClose={() => setIsAdminLoginOpen(false)}
           expectedPassword={config.adminPassword || 'admin'}
+          users={config.adminUsers || []}
           onSuccessLogin={handleAdminLoginSuccess}
         />
       </>
@@ -506,6 +516,7 @@ export default function App() {
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
         expectedPassword={config.adminPassword || 'admin'}
+        users={config.adminUsers || []}
         onSuccessLogin={handleAdminLoginSuccess}
       />
     </div>

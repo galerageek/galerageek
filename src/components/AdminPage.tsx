@@ -31,20 +31,29 @@ import {
   Layers,
   Zap,
   Lock,
-  Copy
+  Copy,
+  Users,
+  UserPlus,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+  UserCheck,
+  FileSpreadsheet
 } from 'lucide-react';
-import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity } from '../types';
+import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
 import { formatBRL, getGameMeta } from '../utils/formatters';
 import { exportCatalogJSON } from '../utils/storage';
 import { CardCameraModal } from './CardCameraModal';
 import { CardPrintsSelectorModal } from './CardPrintsSelectorModal';
+import { LigaExportModal } from './LigaExportModal';
 import { optimizeImageForAnalysis } from '../utils/imageOptimizer';
 import { removeWhiteBackground, detectWhiteBackground, matchPageBackgroundColor } from '../utils/imageTransparency';
 
 interface AdminPageProps {
   cards: CardItem[];
   config: StoreConfig;
+  currentUser?: { username: string; role: AdminRole; name: string } | null;
   onUpdatePriceAndStock: (cardId: string, price: number, stock: number) => void;
   onUpdateCard?: (updated: CardItem) => void;
   onDeleteCard: (cardId: string) => void;
@@ -59,6 +68,7 @@ interface AdminPageProps {
 export const AdminPage: React.FC<AdminPageProps> = ({
   cards,
   config,
+  currentUser,
   onUpdatePriceAndStock,
   onUpdateCard,
   onDeleteCard,
@@ -69,7 +79,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   onBackToStore,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'stock' | 'settings'>('stock');
+  const isEstoquista = currentUser?.role === 'estoquista';
+
+  // If estoquista, can only access stock tab
+  const [activeTab, setActiveTab] = useState<'stock' | 'settings' | 'users'>('stock');
+
+  // New User Form State
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUserForm, setNewUserForm] = useState<{
+    username: string;
+    name: string;
+    password: string;
+    role: AdminRole;
+  }>({
+    username: '',
+    name: '',
+    password: '',
+    role: 'estoquista',
+  });
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
 
   // Stock Tab States
   const [searchQuery, setSearchQuery] = useState('');
@@ -103,6 +131,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     precoMedio: number;
     ligaUrl: string;
   } | null>(null);
+
+  // Liga Sheet Export Modal State
+  const [isLigaExportOpen, setIsLigaExportOpen] = useState(false);
 
   // In-UI Toast Notification
   const [adminToast, setAdminToast] = useState<{
@@ -532,9 +563,92 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
+  const handleAddUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserForm.username.trim() || !newUserForm.password.trim()) {
+      showToast('Preencha o usuário e a senha.', 'error');
+      return;
+    }
+
+    const cleanUsername = newUserForm.username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    const currentUsers = configForm.adminUsers || [];
+
+    if (currentUsers.some(u => u.username.toLowerCase() === cleanUsername)) {
+      showToast(`O usuário "${cleanUsername}" já existe.`, 'error');
+      return;
+    }
+
+    const newUser: AdminUser = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      username: cleanUsername,
+      name: newUserForm.name.trim() || cleanUsername,
+      password: newUserForm.password.trim(),
+      role: newUserForm.role,
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+
+    const updatedUsers = [...currentUsers, newUser];
+    const updatedConfig = { ...configForm, adminUsers: updatedUsers };
+    setConfigForm(updatedConfig);
+    onSaveConfig(updatedConfig);
+
+    setNewUserForm({
+      username: '',
+      name: '',
+      password: '',
+      role: 'estoquista',
+    });
+    setIsAddingUser(false);
+    showToast(`Usuário "${newUser.name}" cadastrado com perfil ${newUser.role === 'admin' ? 'Administrador' : 'Operador de Estoque'}!`, 'success');
+  };
+
+  const handleDeleteUser = (userId: string, username: string) => {
+    if (username.toLowerCase() === 'admin' && (configForm.adminUsers || []).filter(u => u.role === 'admin').length <= 1) {
+      showToast('Não é permitido excluir o único Administrador Geral.', 'error');
+      return;
+    }
+
+    const updatedUsers = (configForm.adminUsers || []).filter(u => u.id !== userId);
+    const updatedConfig = { ...configForm, adminUsers: updatedUsers };
+    setConfigForm(updatedConfig);
+    onSaveConfig(updatedConfig);
+    showToast(`Usuário "${username}" removido.`, 'info');
+  };
+
+  const handleUpdateUserPassword = (userId: string, newPassword: string) => {
+    if (!newPassword.trim()) return;
+    const updatedUsers = (configForm.adminUsers || []).map(u => {
+      if (u.id === userId) {
+        return { ...u, password: newPassword.trim() };
+      }
+      return u;
+    });
+
+    // If master admin password was changed, sync config.adminPassword
+    let newAdminPassword = configForm.adminPassword;
+    const adminUser = updatedUsers.find(u => u.id === userId && u.username.toLowerCase() === 'admin');
+    if (adminUser) {
+      newAdminPassword = adminUser.password;
+    }
+
+    const updatedConfig = { ...configForm, adminUsers: updatedUsers, adminPassword: newAdminPassword };
+    setConfigForm(updatedConfig);
+    onSaveConfig(updatedConfig);
+    showToast('Senha atualizada com sucesso!', 'success');
+  };
+
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveConfig(configForm);
+    // Synchronize master admin password if changed here
+    const updatedUsers = (configForm.adminUsers || []).map(u => {
+      if (u.username.toLowerCase() === 'admin') {
+        return { ...u, password: configForm.adminPassword || 'admin' };
+      }
+      return u;
+    });
+    const updatedConfig = { ...configForm, adminUsers: updatedUsers };
+    setConfigForm(updatedConfig);
+    onSaveConfig(updatedConfig);
     setSettingsSaved(true);
     showToast('Configurações da loja salvas com sucesso!', 'success');
     setTimeout(() => setSettingsSaved(false), 2500);
@@ -577,9 +691,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-[10px] font-bold text-amber-300">
                   Painel ADM
                 </span>
+                {currentUser && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                    isEstoquista 
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' 
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  }`}>
+                    <UserCheck className="w-3 h-3" />
+                    <span>{currentUser.name} ({isEstoquista ? 'Estoque' : 'Admin Geral'})</span>
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-slate-400">
-                Gestão de Estoque, IA de Reconhecimento & Cotações Liga
+                {isEstoquista 
+                  ? 'Acesso Restrito: Consulta, Cadastro, Edição de Preços e Estoque' 
+                  : 'Gestão Completa de Estoque, Usuários, Configurações e IA'}
               </p>
             </div>
           </div>
@@ -608,10 +734,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex border-t border-slate-800/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex border-t border-slate-800/80 overflow-x-auto">
           <button
             onClick={() => setActiveTab('stock')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all shrink-0 ${
               activeTab === 'stock'
                 ? 'border-amber-500 text-amber-400 bg-amber-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -621,17 +747,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             <span>Gerenciar Estoque de Cards ({cards.length})</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all ${
-              activeTab === 'settings'
-                ? 'border-amber-500 text-amber-400 bg-amber-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            <span>Configurações & Logotipo da Loja</span>
-          </button>
+          {!isEstoquista && (
+            <>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all shrink-0 ${
+                  activeTab === 'settings'
+                    ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span>Configurações & Logotipo da Loja</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all shrink-0 ${
+                  activeTab === 'users'
+                    ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Usuários & Senhas ({configForm.adminUsers?.length || 1})</span>
+              </button>
+            </>
+          )}
+
+          {isEstoquista && (
+            <div className="flex items-center gap-1.5 py-3 px-4 text-xs text-slate-500 italic select-none">
+              <Lock className="w-3.5 h-3.5 text-slate-600" />
+              <span>Configurações restritas ao Administrador Geral</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -751,7 +900,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   <span>{isAddingNew ? 'Fechar Formulário' : 'Novo Card'}</span>
                 </button>
 
-                {/* 4. Export JSON */}
+                {/* 4. Export Planilha Liga (XLS / CSV) */}
+                <button
+                  type="button"
+                  onClick={() => setIsLigaExportOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border border-emerald-400/30"
+                  title="Exportar planilha .XLS ou .CSV no padrão oficial da LigaMagic, LigaPokemon e LigaLorcana"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                  <span>Exportar Planilha Liga</span>
+                </button>
+
+                {/* 5. Export JSON Backup */}
                 <button
                   onClick={() => {
                     exportCatalogJSON(cards);
@@ -761,10 +921,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   title="Exportar backup completo em arquivo JSON"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Exportar</span>
+                  <span className="hidden sm:inline">Backup JSON</span>
                 </button>
 
-                {/* 5. Import JSON */}
+                {/* 6. Import JSON */}
                 <label className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Importar</span>
@@ -776,7 +936,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   />
                 </label>
 
-                {/* 6. Restore Default Cards */}
+                {/* 7. Restore Default Cards */}
                 <button
                   onClick={() => {
                     onResetDefaultCards();
@@ -1652,10 +1812,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Senha de Acesso ao Painel Admin</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Senha do Administrador Geral (@admin)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('users')}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 underline font-semibold flex items-center gap-1"
+                    >
+                      <Users className="w-3 h-3" />
+                      <span>Gerenciar todos os usuários</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
@@ -1663,7 +1833,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     onChange={(e) => setConfigForm({ ...configForm, adminPassword: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Senha exigida para abrir a administração</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Senha exigida para abrir a administração com o usuário @admin</span>
                 </div>
 
                 <div className="md:col-span-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
@@ -1868,6 +2038,276 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </div>
           </form>
         )}
+
+        {/* Tab 3: Users & Access Permissions Management */}
+        {activeTab === 'users' && !isEstoquista && (
+          <div className="space-y-6 animate-in fade-in duration-150">
+            {/* Top Info Header */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-white font-bold text-base mb-1">
+                    <Users className="w-5 h-5 text-amber-400" />
+                    <span>Controle de Usuários & Níveis de Acesso</span>
+                  </div>
+                  <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
+                    Cadastre operadores de estoque (que só podem alterar preços, quantidades e cadastrar cards) ou administradores completos que têm acesso às configurações gerais e financeiras da loja.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddingUser(true)}
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 shrink-0 active:scale-95 transition-all"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Novo Usuário</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal / Dialog for New User Creation */}
+            {isAddingUser && (
+              <div className="p-6 rounded-3xl bg-slate-900/90 border border-amber-500/40 shadow-xl space-y-4 animate-in slide-in-from-top-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                    <UserPlus className="w-4 h-4" />
+                    <span>Cadastrar Novo Operador ou Administrador</span>
+                  </div>
+                  <button
+                    onClick={() => setIsAddingUser(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Nome do Operador
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newUserForm.name}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                        placeholder="Ex: Carlos Atendente"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Login (Usuário)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newUserForm.username}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })}
+                        placeholder="Ex: estoque2"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Senha de Acesso
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newUserForm.password}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                        placeholder="Senha segura"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Nível de Permissão
+                      </label>
+                      <select
+                        value={newUserForm.role}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as AdminRole })}
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+                      >
+                        <option value="estoquista">Operador de Estoque (Apenas Cards/Preços)</option>
+                        <option value="admin">Administrador Geral (Acesso Total)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-blue-400" />
+                    <span>
+                      {newUserForm.role === 'estoquista' 
+                        ? '🛡️ O "Operador de Estoque" só pode visualizar, cadastrar, editar fotos, preços e quantidades de cards. Ele NÃO tem acesso às abas de configurações, logotipo, chave PIX ou gerenciamento de usuários.'
+                        : '👑 O "Administrador Geral" tem acesso ilimitado a todas as ferramentas, senhas, chave PIX e configurações da loja.'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingUser(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20"
+                    >
+                      Criar Usuário
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Users List Table */}
+            <div className="rounded-3xl bg-slate-900 border border-slate-800 overflow-hidden shadow-md">
+              <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                <span className="font-bold text-sm text-white flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Usuários Cadastrados ({configForm.adminUsers?.length || 0})</span>
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Você pode alterar a senha de qualquer usuário diretamente no campo correspondente
+                </span>
+              </div>
+
+              <div className="divide-y divide-slate-800">
+                {(configForm.adminUsers || []).map((user) => {
+                  const isVisible = showPasswordMap[user.id] || false;
+                  const isMasterAdmin = user.username.toLowerCase() === 'admin';
+
+                  return (
+                    <div
+                      key={user.id}
+                      className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-800/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border ${
+                          user.role === 'admin'
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                        }`}>
+                          {user.role === 'admin' ? '👑' : '📦'}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-white">{user.name}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              user.role === 'admin'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                            }`}>
+                              {user.role === 'admin' ? 'Administrador Geral' : 'Operador de Estoque'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs font-mono text-slate-400">Login: <b className="text-slate-200">@{user.username}</b></span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-[10px] text-slate-500">
+                              {user.role === 'admin' 
+                                ? 'Acesso a tudo' 
+                                : 'Acesso somente a cards e estoque'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Password Field & Actions */}
+                      <div className="flex items-center gap-3 self-end md:self-center">
+                        <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
+                          <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                          <input
+                            type={isVisible ? 'text' : 'password'}
+                            defaultValue={user.password}
+                            onBlur={(e) => {
+                              if (e.target.value !== user.password) {
+                                handleUpdateUserPassword(user.id, e.target.value);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className="bg-transparent text-xs font-mono text-amber-300 focus:outline-none w-28 sm:w-36"
+                            placeholder="Nova senha"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordMap(prev => ({ ...prev, [user.id]: !isVisible }))}
+                            className="text-slate-500 hover:text-slate-300 p-1"
+                            title={isVisible ? 'Ocultar senha' : 'Ver senha'}
+                          >
+                            {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+
+                        {!isMasterAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Tem certeza que deseja excluir o acesso de "${user.name}" (@${user.username})?`)) {
+                                handleDeleteUser(user.id, user.username);
+                              }
+                            }}
+                            className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/60 transition-colors"
+                            title="Excluir usuário"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick summary of permissions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-5 rounded-3xl bg-slate-900/70 border border-slate-800">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs mb-2">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Perfil: Administrador Geral</span>
+                </div>
+                <ul className="text-[11px] text-slate-400 space-y-1.5 list-disc list-inside">
+                  <li>Alterar nome da loja, WhatsApp e Instagram</li>
+                  <li>Configurar chave PIX e desconto promocional</li>
+                  <li>Gerenciar custos de Carta Registrada, PAC e SEDEX</li>
+                  <li>Alterar o Link Secreto de Acesso ao painel</li>
+                  <li>Cadastrar, editar e excluir outros usuários e senhas</li>
+                  <li>Acesso total a todos os cards e estoque</li>
+                </ul>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-900/70 border border-slate-800">
+                <div className="flex items-center gap-2 text-blue-300 font-bold text-xs mb-2">
+                  <Package className="w-4 h-4" />
+                  <span>Perfil: Operador de Estoque</span>
+                </div>
+                <ul className="text-[11px] text-slate-400 space-y-1.5 list-disc list-inside">
+                  <li>Cadastrar novos cards via scanner de câmera / foto</li>
+                  <li>Pesquisar artes oficiais em alta definição</li>
+                  <li>Consultar cotações e menor preço da Liga</li>
+                  <li>Alterar preços de venda e quantidade em estoque</li>
+                  <li>Exportar e importar backup do catálogo JSON</li>
+                  <li className="text-rose-400 font-medium">Bloqueado: abas de configuração, dados PIX e usuários</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Camera Modal for Scanning Cards */}
@@ -1885,6 +2325,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         game={printsModalState.game}
         currentImageUrl={printsModalState.currentImageUrl}
         onSelectPrint={handleSelectCardPrint}
+      />
+
+      {/* Liga Spreadsheet Export Modal (.XLS / .CSV) */}
+      <LigaExportModal
+        isOpen={isLigaExportOpen}
+        onClose={() => setIsLigaExportOpen(false)}
+        cards={cards}
+        defaultGameFilter={selectedGameFilter}
       />
     </div>
   );

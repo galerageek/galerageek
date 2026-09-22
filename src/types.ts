@@ -42,6 +42,17 @@ export interface CartItem {
   quantity: number;
 }
 
+export type AdminRole = 'admin' | 'estoquista';
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  name: string;
+  password: string;
+  role: AdminRole; // 'admin' (pode tudo) ou 'estoquista' (apenas estoque/preços)
+  createdAt: string;
+}
+
 export interface StoreConfig {
   storeName: string;
   instagram: string;
@@ -58,4 +69,5 @@ export interface StoreConfig {
   freeShippingThreshold: number;
   adminPassword?: string;
   adminSlug?: string;
+  adminUsers?: AdminUser[];
 }

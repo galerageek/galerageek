@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, ShieldCheck, X, ArrowRight, AlertCircle, KeyRound } from 'lucide-react';
+import { Lock, Eye, EyeOff, ShieldCheck, X, ArrowRight, AlertCircle, KeyRound, User } from 'lucide-react';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
+import { AdminUser, AdminRole } from '../types';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   expectedPassword?: string;
-  onSuccessLogin: (remember: boolean) => void;
+  users?: AdminUser[];
+  onSuccessLogin: (remember: boolean, user: { username: string; role: AdminRole; name: string }) => void;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
   expectedPassword = 'admin',
+  users = [],
   onSuccessLogin,
 }) => {
   if (!isOpen) return null;
@@ -33,11 +36,37 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setErrorMessage('');
 
     const trimmedEntered = password.trim();
-    const cleanExpected = (expectedPassword || 'admin').trim();
+    const trimmedUser = username.trim().toLowerCase();
 
-    if (trimmedEntered === cleanExpected) {
+    // Check if matching any registered adminUser
+    let matchedUser: { username: string; role: AdminRole; name: string } | null = null;
+
+    if (users && users.length > 0) {
+      const found = users.find(u => u.username.toLowerCase() === trimmedUser && u.password === trimmedEntered);
+      if (found) {
+        matchedUser = {
+          username: found.username,
+          role: found.role,
+          name: found.name || found.username,
+        };
+      }
+    }
+
+    // Fallback: master admin password check if username is 'admin' or matches master password
+    if (!matchedUser) {
+      const cleanExpected = (expectedPassword || 'admin').trim();
+      if ((trimmedUser === 'admin' || trimmedUser === '') && trimmedEntered === cleanExpected) {
+        matchedUser = {
+          username: 'admin',
+          role: 'admin',
+          name: 'Administrador Geral',
+        };
+      }
+    }
+
+    if (matchedUser) {
       setFailedAttempts(0);
-      onSuccessLogin(rememberMe);
+      onSuccessLogin(rememberMe, matchedUser);
       setPassword('');
       onClose();
     } else {
@@ -62,7 +91,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           });
         }, 1000);
       } else {
-        setErrorMessage(`Senha incorreta (${nextAttempts}/4 tentativas). Verifique os dados.`);
+        setErrorMessage(`Usuário ou senha incorretos (${nextAttempts}/4 tentativas).`);
       }
     }
   };

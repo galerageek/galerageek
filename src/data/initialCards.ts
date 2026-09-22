@@ -16,6 +16,24 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   freeShippingThreshold: 250.00,
   adminPassword: 'admin',
   adminSlug: 'gerenciador-geek',
+  adminUsers: [
+    {
+      id: 'admin-master',
+      username: 'admin',
+      name: 'Administrador Geral',
+      password: 'admin',
+      role: 'admin',
+      createdAt: '2025-01-01',
+    },
+    {
+      id: 'user-estoque',
+      username: 'estoque',
+      name: 'Operador de Estoque',
+      password: 'cards',
+      role: 'estoquista',
+      createdAt: '2025-01-01',
+    }
+  ],
 };
 
 export const INITIAL_CARDS: CardItem[] = [

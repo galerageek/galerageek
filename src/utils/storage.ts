@@ -96,6 +96,26 @@ export const loadStoredConfig = (): StoreConfig => {
     if (!updated.adminSlug) {
       updated.adminSlug = 'gerenciador-geek';
     }
+    if (!updated.adminUsers || updated.adminUsers.length === 0) {
+      updated.adminUsers = [
+        {
+          id: 'admin-master',
+          username: 'admin',
+          name: 'Administrador Geral',
+          password: updated.adminPassword || 'admin',
+          role: 'admin',
+          createdAt: new Date().toISOString().slice(0, 10),
+        },
+        {
+          id: 'user-estoque',
+          username: 'estoque',
+          name: 'Operador de Estoque',
+          password: 'cards',
+          role: 'estoquista',
+          createdAt: new Date().toISOString().slice(0, 10),
+        }
+      ];
+    }
 
     return updated;
   } catch {
@@ -111,6 +131,17 @@ export const saveStoredConfig = (config: StoreConfig): void => {
   }
 };
 
+const CURRENT_USER_KEY = 'galera_geek_current_admin_user_v1';
+
+export const getStoredAdminUser = (): { username: string; role: 'admin' | 'estoquista'; name: string } | null => {
+  try {
+    const raw = localStorage.getItem(CURRENT_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const getStoredAdminAuth = (): boolean => {
   try {
     return localStorage.getItem(ADMIN_AUTH_KEY) === 'true';
@@ -119,12 +150,19 @@ export const getStoredAdminAuth = (): boolean => {
   }
 };
 
-export const setStoredAdminAuth = (isAuthenticated: boolean): void => {
+export const setStoredAdminAuth = (
+  isAuthenticated: boolean,
+  userInfo?: { username: string; role: 'admin' | 'estoquista'; name: string } | null
+): void => {
   try {
     if (isAuthenticated) {
       localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+      if (userInfo) {
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
+      }
     } else {
       localStorage.removeItem(ADMIN_AUTH_KEY);
+      localStorage.removeItem(CURRENT_USER_KEY);
     }
   } catch (err) {
     console.error('Error saving admin auth state', err);
