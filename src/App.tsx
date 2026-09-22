@@ -78,14 +78,25 @@ export default function App() {
     saveStoredConfig(config);
   }, [config]);
 
-  // Persist Cart
+  // Listen to URL Hash (e.g. #/gerenciador-geek) to trigger admin access
   useEffect(() => {
-    try {
-      localStorage.setItem('galera_geek_cart', JSON.stringify(cart));
-    } catch (e) {
-      console.error('Error saving cart', e);
-    }
-  }, [cart]);
+    const checkHashRoute = () => {
+      const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '').trim();
+      const currentSlug = (config.adminSlug || 'gerenciador-geek').toLowerCase().replace(/^\/?/, '').trim();
+
+      if (hash && (hash === currentSlug || hash === `/${currentSlug}`)) {
+        if (isAdminAuthenticated) {
+          setCurrentView('admin');
+        } else {
+          setIsAdminLoginOpen(true);
+        }
+      }
+    };
+
+    checkHashRoute();
+    window.addEventListener('hashchange', checkHashRoute);
+    return () => window.removeEventListener('hashchange', checkHashRoute);
+  }, [config.adminSlug, isAdminAuthenticated]);
 
   // Counts by game for badges
   const gameCounts = useMemo(() => {
@@ -265,6 +276,9 @@ export default function App() {
     setIsAdminAuthenticated(false);
     setStoredAdminAuth(false);
     setCurrentView('store');
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
   };
 
   const instagramUrl = config.instagram.startsWith('http')
@@ -293,6 +307,9 @@ export default function App() {
           onSaveConfig={handleSaveConfig}
           onBackToStore={() => {
             setCurrentView('store');
+            if (window.location.hash) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onLogout={handleAdminLogout}
@@ -417,7 +434,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Social and admin links */}
+            {/* Social links & authenticated admin link */}
             <div className="flex flex-wrap items-center justify-center gap-4">
               <a
                 href={instagramUrl}
@@ -439,14 +456,16 @@ export default function App() {
                 <MessageCircle className="w-4 h-4" />
                 <span>(32) 99813-6130</span>
               </a>
-              <button
-                onClick={handleOpenAdmin}
-                className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/40 transition-colors"
-                title="Acessar Página de Administração"
-              >
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                <span>Painel ADM</span>
-              </button>
+              {isAdminAuthenticated && (
+                <button
+                  onClick={handleOpenAdmin}
+                  className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/40 transition-colors"
+                  title="Acessar Página de Administração"
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <span>Painel ADM</span>
+                </button>
+              )}
             </div>
           </div>
 

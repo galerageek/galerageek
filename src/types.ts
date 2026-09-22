@@ -57,4 +57,5 @@ export interface StoreConfig {
   shippingSedex: number;
   freeShippingThreshold: number;
   adminPassword?: string;
+  adminSlug?: string;
 }

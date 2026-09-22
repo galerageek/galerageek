@@ -22,20 +22,48 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockCountdown, setLockCountdown] = useState(0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
+
     setErrorMessage('');
 
     const trimmedEntered = password.trim();
     const cleanExpected = (expectedPassword || 'admin').trim();
 
     if (trimmedEntered === cleanExpected) {
+      setFailedAttempts(0);
       onSuccessLogin(rememberMe);
       setPassword('');
       onClose();
     } else {
-      setErrorMessage('Senha incorreta. Verifique os dados e tente novamente.');
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+
+      if (nextAttempts >= 4) {
+        setIsLocked(true);
+        setLockCountdown(30);
+        setErrorMessage('Muitas tentativas incorretas. Acesso bloqueado temporariamente por 30 segundos.');
+
+        const interval = window.setInterval(() => {
+          setLockCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(interval);
+              setIsLocked(false);
+              setFailedAttempts(0);
+              setErrorMessage('');
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        setErrorMessage(`Senha incorreta (${nextAttempts}/4 tentativas). Verifique os dados.`);
+      }
     }
   };
 
@@ -140,21 +168,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
             <button
               type="submit"
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              disabled={isLocked}
+              className={`w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
+                isLocked
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/20 hover:scale-[1.01] active:scale-[0.99]'
+              }`}
             >
               <Lock className="w-4 h-4" />
-              <span>Entrar no Gerenciador de Estoque</span>
-              <ArrowRight className="w-4 h-4 ml-1" />
+              <span>{isLocked ? `Aguarde ${lockCountdown}s...` : 'Entrar no Gerenciador de Estoque'}</span>
+              {!isLocked && <ArrowRight className="w-4 h-4 ml-1" />}
             </button>
           </form>
-
-          {/* Quick Credential Helper / Hint */}
-          <div className="mt-6 p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-400 text-center">
-            <span className="text-amber-400 font-semibold">Dica de Acesso Inicial:</span>
-            <p className="mt-0.5">
-              A senha padrão inicial é <code className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono font-bold">admin</code>. Você pode alterá-la nas configurações após o login.
-            </p>
-          </div>
         </div>
       </div>
     </div>

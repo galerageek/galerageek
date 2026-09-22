@@ -120,8 +120,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden lg:inline xl:hidden">WhatsApp</span>
             </a>
 
-            {/* Admin Dedicated Page Access */}
-            {isAdminAuthenticated ? (
+            {/* Admin Dedicated Page Access - Only visible if already authenticated */}
+            {isAdminAuthenticated && (
               <div className="inline-flex items-center rounded-xl bg-slate-900 border border-amber-500/50 p-0.5 shadow-sm">
                 <button
                   onClick={onOpenAdmin}
@@ -141,15 +141,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : (
-              <button
-                onClick={onOpenAdmin}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 hover:border-amber-500/40 transition-colors"
-                title="Acessar Painel Administrativo (Requer Senha)"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Painel ADM</span>
-              </button>
             )}
 
             {/* Cart Button */}

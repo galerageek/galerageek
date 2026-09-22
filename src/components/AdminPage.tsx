@@ -29,7 +29,9 @@ import {
   Wand2,
   Palette,
   Layers,
-  Zap
+  Zap,
+  Lock,
+  Copy
 } from 'lucide-react';
 import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
@@ -1662,6 +1664,52 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500"
                   />
                   <span className="text-[10px] text-slate-500 mt-1 block">Senha exigida para abrir a administração</span>
+                </div>
+
+                <div className="md:col-span-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-amber-300 font-bold text-xs flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5" />
+                        Link Secreto de Acesso à Administração
+                      </span>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Para máxima segurança, não há botões públicos na loja. Somente quem digitar o endereço secreto consegue ver a tela de login.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="flex-1 flex items-center bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-300">
+                      <span className="text-slate-500 select-none hidden sm:inline">.../#/</span>
+                      <input
+                        type="text"
+                        value={configForm.adminSlug || 'gerenciador-geek'}
+                        onChange={(e) => {
+                          const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                          setConfigForm({ ...configForm, adminSlug: sanitized });
+                        }}
+                        placeholder="gerenciador-geek"
+                        className="bg-transparent text-amber-300 font-bold font-mono focus:outline-none w-full"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const slug = configForm.adminSlug || 'gerenciador-geek';
+                        const fullUrl = `${window.location.origin}${window.location.pathname}#/${slug}`;
+                        navigator.clipboard.writeText(fullUrl);
+                        alert(`Link secreto copiado para a área de transferência:\n${fullUrl}`);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Copiar Link Secreto</span>
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-amber-400/80 mt-1.5 block">
+                    Exemplo atual: <code className="text-white font-mono font-bold">#/{configForm.adminSlug || 'gerenciador-geek'}</code>
+                  </span>
                 </div>
               </div>
             </div>

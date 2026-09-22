@@ -15,6 +15,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   shippingSedex: 45.00,
   freeShippingThreshold: 250.00,
   adminPassword: 'admin',
+  adminSlug: 'gerenciador-geek',
 };
 
 export const INITIAL_CARDS: CardItem[] = [

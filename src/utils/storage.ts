@@ -93,6 +93,9 @@ export const loadStoredConfig = (): StoreConfig => {
     if (!updated.adminPassword) {
       updated.adminPassword = 'admin';
     }
+    if (!updated.adminSlug) {
+      updated.adminSlug = 'gerenciador-geek';
+    }
 
     return updated;
   } catch {
