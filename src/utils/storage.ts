@@ -37,24 +37,44 @@ export const loadStoredCards = (): CardItem[] => {
           imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}&output=webp`;
         }
 
-        // If rift card, ensure name and code are updated to clean official values
+        // If rift card, ensure name, code, set, attributes and real images are updated to clean official values
         let name = c.name;
+        let setName = c.setName;
         let setCode = c.setCode;
         let cardNumber = c.cardNumber;
         let description = c.description;
+        let cardType = c.cardType;
+        let colorOrAttribute = c.colorOrAttribute;
+        let language = c.language;
+        let finishType = c.finishType;
+        let rarity = c.rarity;
+
         if (initial && c.id.startsWith('rift-')) {
           name = initial.name;
+          setName = initial.setName;
           setCode = initial.setCode;
           cardNumber = initial.cardNumber;
           description = initial.description;
+          cardType = initial.cardType;
+          colorOrAttribute = initial.colorOrAttribute;
+          language = initial.language;
+          finishType = initial.finishType;
+          rarity = initial.rarity;
+          imageUrl = initial.imageUrl;
         }
 
         return {
           ...c,
           name,
+          setName,
           setCode,
           cardNumber,
           description,
+          cardType,
+          colorOrAttribute,
+          language,
+          finishType,
+          rarity,
           imageUrl,
           price: typeof c.price === 'number' ? c.price : (initial ? initial.price : 25),
           stockQuantity: typeof c.stockQuantity === 'number' ? c.stockQuantity : 1,

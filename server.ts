@@ -283,20 +283,28 @@ async function fetchLigaLowestPrice(
   };
 }
 
-// In-memory cache of Riot's official Legends of Runeterra Portuguese cards (with official card borders & stats)
-let cachedLoRSet1: any[] | null = null;
-async function getOfficialLoRCards(): Promise<any[]> {
-  if (cachedLoRSet1 && cachedLoRSet1.length > 0) {
-    return cachedLoRSet1;
+// In-memory cache of Riot's official Riftbound: League of Legends TCG cards (PlayRiftbound.com)
+let cachedRiftboundCards: any[] | null = null;
+async function getOfficialRiftboundCards(): Promise<any[]> {
+  if (cachedRiftboundCards && cachedRiftboundCards.length > 0) {
+    return cachedRiftboundCards;
   }
   try {
-    const res = await fetch('https://dd.b.pvp.net/latest/set1/pt_br/data/set1-pt_br.json');
+    const res = await fetch('https://playriftbound.com/_next/data/LI6_0luFJW4oaE-wYs9e6/en-us/card-gallery.json', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     if (res.ok) {
-      cachedLoRSet1 = await res.json();
-      return cachedLoRSet1 || [];
+      const data = await res.json();
+      const items = data?.pageProps?.page?.blades?.[2]?.cards?.items;
+      if (Array.isArray(items) && items.length > 0) {
+        cachedRiftboundCards = items.filter((c: any) => c && c.cardImage && c.cardImage.url);
+        return cachedRiftboundCards || [];
+      }
     }
   } catch (err) {
-    console.warn('Failed to load LoR official card set:', err);
+    console.warn('Failed to load official Riftbound cards gallery:', err);
   }
   return [];
 }
@@ -510,29 +518,57 @@ async function fetchCardDetails(
     }
   } else if (game === 'riftbound') {
     try {
-      const qLower = (cardName || '').toLowerCase();
-      const lorCards = await getOfficialLoRCards();
-      let matched = lorCards.find((c: any) => c.name?.toLowerCase() === qLower || c.cardCode?.toLowerCase() === qLower);
+      const qLower = (cardName || '').toLowerCase().trim();
+      const riftCards = await getOfficialRiftboundCards();
+      
+      let matched = riftCards.find((c: any) => {
+        const n = (c.name || '').toLowerCase();
+        const sub = (c.subtitle || '').toLowerCase();
+        const code = (c.publicCode || '').toLowerCase();
+        return n === qLower || `${n}, ${sub}` === qLower || `${n} ${sub}` === qLower || code === qLower;
+      });
+
       if (!matched) {
-        matched = lorCards.find((c: any) => c.name?.toLowerCase().includes(qLower));
+        matched = riftCards.find((c: any) => {
+          const n = (c.name || '').toLowerCase();
+          return n.includes(qLower) || qLower.includes(n);
+        });
       }
 
-      const lorImg = matched 
-        ? `https://dd.b.pvp.net/latest/set1/pt_br/img/cards/${matched.cardCode}.png`
-        : 'https://dd.b.pvp.net/latest/set1/pt_br/img/cards/01IO015.png';
-      const foundName = matched ? matched.name : cardName;
-      const cardNum = matched ? matched.cardCode : (cardNumber || '018/180');
-      const foundRarity = matched?.rarityRef || rarity || (matched?.supertype === 'Campeão' ? 'Mítica' : 'Rara');
+      if (matched) {
+        const setName = matched.set?.value?.label || 'Origins';
+        const setCode = matched.set?.value?.id || 'OGN';
+        const cardNum = matched.publicCode || `${matched.collectorNumber || '001'}`;
+        const rarityLabel = matched.rarity?.value?.label || 'Rare';
+        const cardTitle = matched.subtitle ? `${matched.name}, ${matched.subtitle}` : matched.name;
+        const rawImg = matched.cardImage?.url;
+        const imgUrl = rawImg ? `https://wsrv.nl/?url=${encodeURIComponent(rawImg)}&output=webp` : '';
 
-      const liga = await fetchLigaLowestPrice(foundName, 'riftbound', foundRarity, aiEstimate);
+        const liga = await fetchLigaLowestPrice(matched.name, 'riftbound', rarityLabel, aiEstimate, cardTitle, setCode, String(matched.collectorNumber));
+        return {
+          name: cardTitle,
+          originalName: cardTitle,
+          setName,
+          setCode,
+          cardNumber: cardNum,
+          rarity: rarityLabel === 'Showcase' ? 'Special' : rarityLabel === 'Epic' ? 'Mítica' : 'Rara',
+          imageUrl: imgUrl,
+          game: 'riftbound',
+          menorPrecoLiga: liga.menorPreco,
+          precoMedioLiga: liga.precoMedio,
+          ligaUrl: liga.ligaUrl,
+        };
+      }
+
+      const liga = await fetchLigaLowestPrice(cardName, 'riftbound', rarity, aiEstimate);
       return {
-        name: foundName,
-        originalName: englishName || foundName,
-        setName: 'Origens de Runeterra: Edição Alfa',
-        setCode: setCode || 'RFT-01',
-        cardNumber: cardNum,
-        rarity: foundRarity,
-        imageUrl: lorImg,
+        name: cardName,
+        originalName: englishName || cardName,
+        setName: setCode || 'Origins',
+        setCode: setCode || 'OGN',
+        cardNumber: cardNumber || '001',
+        rarity: rarity || 'Rara',
+        imageUrl: 'https://wsrv.nl/?url=https%3A%2F%2Fcmsassets.rgpub.io%2Fsanity%2Fimages%2Fdsfx7636%2Fgame_data_live%2F35f7ca6802af48585af55d23cf7675a8922d8535-744x1039.png%3FaccountingTag%3DRB&output=webp',
         game: 'riftbound',
         menorPrecoLiga: liga.menorPreco,
         precoMedioLiga: liga.precoMedio,
@@ -1140,64 +1176,74 @@ app.get('/api/search-card-prints', async (req, res) => {
       }
 
     } else if (game === 'riftbound') {
-      // Riftbound TCG (Official Portuguese cards from Legends of Runeterra TCG with borders, stats & card frames)
+      // Riftbound: League of Legends TCG (Official cards from PlayRiftbound.com with authentic card frames, domains, stats)
       const qLower = cleanQuery.toLowerCase();
       try {
-        const lorCards = await getOfficialLoRCards();
-        const matches = lorCards.filter((c: any) =>
-          c.name?.toLowerCase().includes(qLower) ||
-          c.cardCode?.toLowerCase().includes(qLower) ||
-          cleanQuery === ''
-        );
-
-        // Sort champions first, then spells/units
-        matches.sort((a: any, b: any) => {
-          const aChamp = a.supertype === 'Campeão' ? 1 : 0;
-          const bChamp = b.supertype === 'Campeão' ? 1 : 0;
-          return bChamp - aChamp;
+        const riftCards = await getOfficialRiftboundCards();
+        const matches = riftCards.filter((c: any) => {
+          const n = (c.name || '').toLowerCase();
+          const sub = (c.subtitle || '').toLowerCase();
+          const code = (c.publicCode || '').toLowerCase();
+          return n.includes(qLower) || sub.includes(qLower) || code.includes(qLower) || cleanQuery === '';
         });
 
-        for (const c of matches.slice(0, 16)) {
-          const isChamp = c.supertype === 'Campeão';
+        // Champions and Showcase first
+        matches.sort((a: any, b: any) => {
+          const aSuper = a.cardType?.superType?.some((s: any) => s.id === 'champion') ? 1 : 0;
+          const bSuper = b.cardType?.superType?.some((s: any) => s.id === 'champion') ? 1 : 0;
+          return bSuper - aSuper;
+        });
+
+        for (const c of matches.slice(0, 20)) {
+          const rawImg = c.cardImage?.url;
+          if (!rawImg) continue;
+
+          const title = c.subtitle ? `${c.name}, ${c.subtitle}` : c.name;
+          const isChamp = c.cardType?.superType?.some((s: any) => s.id === 'champion');
+          const rarityLabel = c.rarity?.value?.label || 'Rare';
+          const setLabel = c.set?.value?.label || 'Origins';
+          const setCode = c.set?.value?.id || 'OGN';
+          const cardNum = c.publicCode || `${c.collectorNumber || '001'}`;
+
           prints.push({
-            id: `rift-lor-${c.cardCode}`,
-            name: isChamp ? `${c.name} (Campeão Oficial PT-BR)` : `${c.name} (Carta Oficial PT-BR)`,
-            printedName: c.name,
-            setName: 'Origens de Runeterra: Edição Alfa',
-            setCode: c.cardCode?.substring(0, 4) || 'RFT1',
-            cardNumber: c.cardCode,
-            rarity: c.rarityRef || (isChamp ? 'Mítica' : 'Rara'),
-            imageUrl: `https://dd.b.pvp.net/latest/set1/pt_br/img/cards/${c.cardCode}.png`,
-            language: 'PT-BR',
-            finishes: isChamp ? 'Textured Foil / Oficial' : 'Standard Art',
-            isPromo: isChamp,
+            id: `rift-official-${c.id || cardNum}`,
+            name: `${title} (Carta Oficial Riftbound TCG)`,
+            printedName: title,
+            setName: setLabel,
+            setCode: setCode,
+            cardNumber: cardNum,
+            rarity: rarityLabel === 'Showcase' ? 'Special / Showcase' : rarityLabel === 'Epic' ? 'Mítica' : 'Rara',
+            imageUrl: `https://wsrv.nl/?url=${encodeURIComponent(rawImg)}&output=webp`,
+            language: 'EN',
+            finishes: rarityLabel === 'Showcase' ? 'Showcase Foil' : isChamp ? 'Textured Foil' : 'Normal',
+            isPromo: rarityLabel === 'Showcase',
           });
         }
-      } catch (lorErr) {
-        console.warn('LoR cards search error:', lorErr);
+      } catch (riftErr) {
+        console.warn('Riftbound cards search error:', riftErr);
       }
 
       // Safe fallback if offline
       if (prints.length === 0) {
         const staples = [
-          { name: 'Yasuo, o Imperdoável', code: '01IO015', rarity: 'Mítica' },
-          { name: 'Jinx, o Gatilho Solto', code: '01PZ040', rarity: 'Rara' },
-          { name: 'Zed, o Mestre das Sombras', code: '01IO009', rarity: 'Mítica' },
-          { name: 'Garen, o Poder de Demacia', code: '01DE012', rarity: 'Rara' },
+          { name: 'Yasuo, Windrider', code: 'OGN-205a/298', set: 'Origins', setCode: 'OGN', rarity: 'Showcase', img: 'https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/35f7ca6802af48585af55d23cf7675a8922d8535-744x1039.png?accountingTag=RB' },
+          { name: 'Jinx, Demolitionist', code: 'OGN-030/298', set: 'Origins', setCode: 'OGN', rarity: 'Rara', img: 'https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d6cac988aa7798945e550eba6841d3993868c4a4-744x1039.png?accountingTag=RB' },
+          { name: 'Zed, From the Shadows', code: 'VEN-023/166', set: 'Vendetta', setCode: 'VEN', rarity: 'Mítica', img: 'https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/06793f17adbd827e468db40d644eb273a3932c7e-744x1039.png?accountingTag=RB' },
+          { name: 'Garen, Rugged', code: 'OGS-007/024', set: 'Proving Grounds', setCode: 'OGS', rarity: 'Rara', img: 'https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/67c22dc29a7a28dabe0f169a7848c25bef1fbda4-744x1039.png?accountingTag=RB' },
         ];
         for (const s of staples) {
           prints.push({
             id: `rift-staple-${s.code}`,
-            name: `${s.name} (Carta Oficial PT-BR)`,
+            name: `${s.name} (Carta Oficial Riftbound TCG)`,
             printedName: s.name,
-            setName: 'Origens de Runeterra: Edição Alfa',
-            setCode: 'RFT-01',
+            setName: s.set,
+            setCode: s.setCode,
             cardNumber: s.code,
             rarity: s.rarity,
-            imageUrl: `https://dd.b.pvp.net/latest/set1/pt_br/img/cards/${s.code}.png`,
-            language: 'PT-BR',
-            finishes: 'Textured Foil / Oficial',
-            isPromo: s.rarity === 'Mítica',
+            imageUrl: `https://wsrv.nl/?url=${encodeURIComponent(s.img)}&output=webp`,
+            language: 'EN',
+            finishes: s.rarity === 'Showcase' ? 'Showcase Foil' : 'Textured Foil',
+            isPromo: s.rarity === 'Showcase',
           });
         }
       }
