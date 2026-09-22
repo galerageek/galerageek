@@ -1,4 +1,4 @@
-import { CardItem, StoreConfig } from '../types';
+import { CardItem, StoreConfig, CartItem } from '../types';
 import { INITIAL_CARDS, DEFAULT_STORE_CONFIG } from '../data/initialCards';
 
 const CARDS_STORAGE_KEY = 'galera_geek_cards_v2';
@@ -220,4 +220,31 @@ export const exportCatalogJSON = (cards: CardItem[]): void => {
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
   downloadAnchor.remove();
+};
+
+const CART_STORAGE_KEY = 'galera_geek_cart_v1';
+
+export const loadStoredCart = (): CartItem[] => {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY) || localStorage.getItem('galera_geek_cart');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item: any) => item && item.card && typeof item.quantity === 'number' && item.quantity > 0);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveStoredCart = (cart: CartItem[]): void => {
+  try {
+    const serialized = JSON.stringify(cart);
+    localStorage.setItem(CART_STORAGE_KEY, serialized);
+    // Keep legacy key in sync so any older reads are also cleared or updated
+    localStorage.setItem('galera_geek_cart', serialized);
+  } catch (err) {
+    console.error('Error saving cart to localStorage', err);
+  }
 };

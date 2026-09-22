@@ -13,6 +13,8 @@ import {
   saveStoredCards, 
   loadStoredConfig, 
   saveStoredConfig,
+  loadStoredCart,
+  saveStoredCart,
   getStoredAdminAuth,
   setStoredAdminAuth,
   getStoredAdminUser
@@ -46,14 +48,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'store' | 'admin'>('store');
 
   // State: Cart
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    try {
-      const savedCart = localStorage.getItem('galera_geek_cart');
-      return savedCart ? JSON.parse(savedCart) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState<CartItem[]>(() => loadStoredCart());
 
   // State: Admin Auth & Session
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => getStoredAdminAuth());
@@ -80,6 +75,11 @@ export default function App() {
   useEffect(() => {
     saveStoredConfig(config);
   }, [config]);
+
+  // Persist Cart changes (add, remove, clear, quantity change)
+  useEffect(() => {
+    saveStoredCart(cart);
+  }, [cart]);
 
   // Listen to URL Hash (e.g. #/gerenciador-geek) to trigger admin access
   useEffect(() => {
@@ -190,14 +190,17 @@ export default function App() {
 
     setCart((prev) => {
       const existing = prev.find((item) => item.card.id === card.id);
+      let updated: CartItem[];
       if (existing) {
         const newQty = Math.min(existing.quantity + quantity, card.stockQuantity);
-        return prev.map((item) =>
+        updated = prev.map((item) =>
           item.card.id === card.id ? { ...item, quantity: newQty } : item
         );
       } else {
-        return [...prev, { card, quantity: Math.min(quantity, card.stockQuantity) }];
+        updated = [...prev, { card, quantity: Math.min(quantity, card.stockQuantity) }];
       }
+      saveStoredCart(updated);
+      return updated;
     });
     setCartAnimationTrigger(Date.now());
     setIsCartOpen(true);
@@ -208,22 +211,29 @@ export default function App() {
       handleRemoveCartItem(cardId);
       return;
     }
-    setCart((prev) =>
-      prev.map((item) => {
+    setCart((prev) => {
+      const updated = prev.map((item) => {
         if (item.card.id === cardId) {
           const maxAllowed = item.card.stockQuantity;
           return { ...item, quantity: Math.min(quantity, maxAllowed) };
         }
         return item;
-      })
-    );
+      });
+      saveStoredCart(updated);
+      return updated;
+    });
   };
 
   const handleRemoveCartItem = (cardId: string) => {
-    setCart((prev) => prev.filter((item) => item.card.id !== cardId));
+    setCart((prev) => {
+      const updated = prev.filter((item) => item.card.id !== cardId);
+      saveStoredCart(updated);
+      return updated;
+    });
   };
 
   const handleClearCart = () => {
+    saveStoredCart([]);
     setCart([]);
   };
 
