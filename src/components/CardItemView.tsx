@@ -32,23 +32,40 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
   }, [card.imageUrl]);
 
   const handleImageError = () => {
-    if (retryStage === 0 && currentImgSrc) {
-      // If Scryfall with query params, strip them
-      const cleanUrl = currentImgSrc.split('?')[0];
-      if (cleanUrl !== currentImgSrc) {
+    if (!currentImgSrc) {
+      setImageError(true);
+      return;
+    }
+
+    if (retryStage === 0) {
+      // 1st fallback: If not already using wsrv.nl, try wsrv.nl WebP converter
+      if (!currentImgSrc.includes('wsrv.nl')) {
         setRetryStage(1);
-        setCurrentImgSrc(cleanUrl);
+        const rawToProxy = currentImgSrc.includes('/api/card-image-proxy?url=')
+          ? decodeURIComponent(currentImgSrc.split('/api/card-image-proxy?url=')[1])
+          : currentImgSrc;
+        setCurrentImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(rawToProxy)}&output=webp`);
+        return;
+      } else {
+        // If wsrv failed, try backend proxy directly
+        setRetryStage(1);
+        const original = decodeURIComponent(currentImgSrc.split('url=')[1]?.split('&')[0] || currentImgSrc);
+        setCurrentImgSrc(`/api/card-image-proxy?url=${encodeURIComponent(original)}`);
         return;
       }
-      // Or proxy via server
-      setRetryStage(1);
-      setCurrentImgSrc(`/api/card-image-proxy?url=${encodeURIComponent(currentImgSrc)}`);
-    } else if (retryStage === 1 && currentImgSrc) {
+    } else if (retryStage === 1) {
+      // 2nd fallback: try backend proxy or raw
       setRetryStage(2);
-      const urlToProxy = currentImgSrc.includes('/api/card-image-proxy?url=')
-        ? decodeURIComponent(currentImgSrc.split('/api/card-image-proxy?url=')[1])
-        : currentImgSrc;
-      setCurrentImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(urlToProxy)}&output=webp`);
+      if (!currentImgSrc.includes('/api/card-image-proxy')) {
+        const raw = currentImgSrc.includes('wsrv.nl')
+          ? decodeURIComponent(currentImgSrc.split('url=')[1]?.split('&')[0] || '')
+          : currentImgSrc;
+        if (raw) {
+          setCurrentImgSrc(`/api/card-image-proxy?url=${encodeURIComponent(raw)}`);
+          return;
+        }
+      }
+      setImageError(true);
     } else {
       setImageError(true);
     }

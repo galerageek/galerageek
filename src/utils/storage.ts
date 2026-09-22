@@ -17,7 +17,7 @@ export const loadStoredCards = (): CardItem[] => {
       const initialMap = new Map<string, CardItem>();
       INITIAL_CARDS.forEach(c => initialMap.set(c.id, c));
 
-      // Sanitize cards and auto-upgrade broken/stale image URLs (like old lorcania 404s, unsplash placeholders, unproxied Bandai, or stale Scryfall CDN hashes)
+      // Sanitize cards and auto-upgrade broken/stale image URLs
       const updated = parsed.map((c: any) => {
         let imageUrl = c.imageUrl || '';
         const initial = initialMap.get(c.id);
@@ -30,17 +30,33 @@ export const loadStoredCards = (): CardItem[] => {
            imageUrl.includes('ddragon.leagueoflegends.com/cdn/img/champion/loading') ||
            c.id.startsWith('mtg-') ||
            c.id.startsWith('rift-') ||
-           (c.id.startsWith('op-') && !imageUrl.includes('/api/card-image-proxy') && !imageUrl.includes('wsrv.nl')))
+           c.id.startsWith('op-'))
         ) {
           imageUrl = initial.imageUrl;
         } else if (imageUrl && imageUrl.includes('en.onepiece-cardgame.com') && !imageUrl.includes('/api/card-image-proxy') && !imageUrl.includes('wsrv.nl')) {
-          imageUrl = `/api/card-image-proxy?url=${encodeURIComponent(imageUrl)}`;
+          imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(imageUrl)}&output=webp`;
+        }
+
+        // If rift card, ensure name and code are updated to clean official values
+        let name = c.name;
+        let setCode = c.setCode;
+        let cardNumber = c.cardNumber;
+        let description = c.description;
+        if (initial && c.id.startsWith('rift-')) {
+          name = initial.name;
+          setCode = initial.setCode;
+          cardNumber = initial.cardNumber;
+          description = initial.description;
         }
 
         return {
           ...c,
+          name,
+          setCode,
+          cardNumber,
+          description,
           imageUrl,
-          price: typeof c.price === 'number' ? c.price : 25,
+          price: typeof c.price === 'number' ? c.price : (initial ? initial.price : 25),
           stockQuantity: typeof c.stockQuantity === 'number' ? c.stockQuantity : 1,
         };
       });
