@@ -5,6 +5,7 @@ import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters
 
 interface CardItemViewProps {
   card: CardItem;
+  pixDiscountPercent?: number;
   onAddToCart: (card: CardItem) => void;
   onViewDetails?: (card: CardItem) => void;
   onSelect?: (card: CardItem) => void;
@@ -12,6 +13,7 @@ interface CardItemViewProps {
 
 export const CardItemView: React.FC<CardItemViewProps> = ({
   card,
+  pixDiscountPercent = 0,
   onAddToCart,
   onViewDetails,
   onSelect,
@@ -55,7 +57,8 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
   const gameMeta = getGameMeta(card.game);
   const conditionMeta = getConditionDetails(card.condition);
 
-  const pixPrice = card.price * 0.95; // 5% PIX discount
+  const hasPixDiscount = typeof pixDiscountPercent === 'number' && pixDiscountPercent > 0;
+  const pixPrice = hasPixDiscount ? card.price * (1 - pixDiscountPercent / 100) : card.price;
   const discountPercent = card.originalPrice && card.originalPrice > card.price
     ? Math.round(((card.originalPrice - card.price) / card.originalPrice) * 100)
     : 0;
@@ -227,10 +230,12 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
               <div className="font-display font-black text-base sm:text-lg text-white leading-none">
                 {formatBRL(card.price)}
               </div>
-              <div className="text-[10px] sm:text-[11px] font-semibold text-emerald-400 flex items-center gap-1 mt-1 leading-none">
-                <Zap className="w-3 h-3 shrink-0" />
-                <span>{formatBRL(pixPrice)} PIX</span>
-              </div>
+              {hasPixDiscount && (
+                <div className="text-[10px] sm:text-[11px] font-semibold text-emerald-400 flex items-center gap-1 mt-1 leading-none">
+                  <Zap className="w-3 h-3 shrink-0" />
+                  <span>{formatBRL(pixPrice)} PIX</span>
+                </div>
+              )}
             </div>
 
             {/* Stock Indicator */}

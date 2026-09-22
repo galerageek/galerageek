@@ -73,10 +73,12 @@ export const BannerHero: React.FC<BannerHeroProps> = ({ config, totalCardsCount 
                   <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
                   <span>Envio com Toploader Rígido</span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800 text-emerald-400 font-semibold">
-                  <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{config.pixDiscountPercent}% OFF no PIX</span>
-                </div>
+                {config.pixDiscountPercent > 0 && (
+                  <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800 text-emerald-400 font-semibold">
+                    <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{config.pixDiscountPercent}% OFF no PIX</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -106,10 +108,12 @@ export const BannerHero: React.FC<BannerHeroProps> = ({ config, totalCardsCount 
                   {instagramDisplay}
                 </a>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Desconto Especial PIX:</span>
-                <span className="font-bold text-emerald-400">{config.pixDiscountPercent}% de Desconto</span>
-              </div>
+              {config.pixDiscountPercent > 0 && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">Desconto Especial PIX:</span>
+                  <span className="font-bold text-emerald-400">{config.pixDiscountPercent}% de Desconto</span>
+                </div>
+              )}
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-400">Frete Grátis:</span>
                 <span className="font-semibold text-white">Acima de R$ {config.freeShippingThreshold.toFixed(2)}</span>

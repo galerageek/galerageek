@@ -148,7 +148,9 @@ export const generateWhatsAppOrderMessage = (
       ? 'SEDEX Correios'
       : 'Retirada em Mãos / Presencial';
 
-  const paymentName = paymentMethod === 'pix' ? `PIX (${config.pixDiscountPercent}% de Desconto)` : 'Cartão / Negociar';
+  const paymentName = paymentMethod === 'pix' 
+    ? (config.pixDiscountPercent > 0 ? `PIX (${config.pixDiscountPercent}% de Desconto)` : 'PIX') 
+    : 'Cartão / Negociar';
 
   const text = 
 `👋 Olá, *${config.storeName}*!

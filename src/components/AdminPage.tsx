@@ -28,7 +28,8 @@ import {
   Coins,
   Wand2,
   Palette,
-  Layers
+  Layers,
+  Zap
 } from 'lucide-react';
 import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
@@ -1661,6 +1662,148 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500"
                   />
                   <span className="text-[10px] text-slate-500 mt-1 block">Senha exigida para abrir a administração</span>
+                </div>
+              </div>
+            </div>
+
+            {/* PIX Payment & Discount Settings */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-white font-bold text-sm">
+                  <QrCode className="w-5 h-5 text-emerald-400" />
+                  <span>Pagamento via PIX & Desconto Promocional</span>
+                </div>
+                {configForm.pixDiscountPercent > 0 ? (
+                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                    <Zap className="w-3 h-3" />
+                    {configForm.pixDiscountPercent}% OFF Ativo
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium text-slate-400 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-full">
+                    Desconto Desativado (0%)
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Desconto no PIX (%)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={configForm.pixDiscountPercent}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setConfigForm({ ...configForm, pixDiscountPercent: isNaN(val) ? 0 : Math.max(0, Math.min(100, val)) });
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-emerald-300 font-bold text-sm focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="absolute right-3 top-2.5 text-slate-400 font-bold">%</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 block leading-tight">
+                    {configForm.pixDiscountPercent > 0 
+                      ? `Exibindo ${configForm.pixDiscountPercent}% de desconto no topo, nos cards e no carrinho.` 
+                      : 'Valor 0: Nenhuma menção ou valor promocional de PIX aparecerá nos cards ou no banner.'}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">
+                    Chave PIX da Loja
+                  </label>
+                  <input
+                    type="text"
+                    value={configForm.pixKey}
+                    onChange={(e) => setConfigForm({ ...configForm, pixKey: e.target.value })}
+                    placeholder="pix@galerageek.com.br ou CPF ou Celular"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Chave exibida para o cliente copiar no carrinho</span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">
+                    Tipo da Chave PIX
+                  </label>
+                  <select
+                    value={configForm.pixKeyType}
+                    onChange={(e) => setConfigForm({ ...configForm, pixKeyType: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-semibold focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="Email">Email</option>
+                    <option value="CPF/CNPJ">CPF / CNPJ</option>
+                    <option value="Telefone">Telefone / Celular</option>
+                    <option value="Chave Aleatória">Chave Aleatória (EVP)</option>
+                  </select>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Ajuda o cliente a identificar o tipo na hora de transferir</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipping & Delivery Settings */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-3">
+                <Truck className="w-5 h-5 text-amber-400" />
+                <span>Taxas de Frete & Frete Grátis</span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Carta Registrada (R$)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={configForm.shippingCartaRegistrada}
+                    onChange={(e) => setConfigForm({ ...configForm, shippingCartaRegistrada: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Com seguro e toploader</span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">PAC Correios (R$)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={configForm.shippingPac}
+                    onChange={(e) => setConfigForm({ ...configForm, shippingPac: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Envio padrão pacotes</span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">SEDEX Correios (R$)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={configForm.shippingSedex}
+                    onChange={(e) => setConfigForm({ ...configForm, shippingSedex: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Envio expresso rápido</span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Frete Grátis a partir de (R$)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={configForm.freeShippingThreshold}
+                    onChange={(e) => setConfigForm({ ...configForm, freeShippingThreshold: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-emerald-400 font-bold focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Valor mínimo do pedido</span>
                 </div>
               </div>
             </div>

@@ -15,12 +15,14 @@ import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters
 
 interface CardDetailModalProps {
   card: CardItem | null;
+  pixDiscountPercent?: number;
   onClose: () => void;
   onAddToCart: (card: CardItem, quantity: number) => void;
 }
 
 export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   card,
+  pixDiscountPercent = 0,
   onClose,
   onAddToCart,
 }) => {
@@ -58,7 +60,8 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
 
   const gameMeta = getGameMeta(card.game);
   const conditionMeta = getConditionDetails(card.condition);
-  const pixPrice = card.price * 0.95;
+  const hasPixDiscount = typeof pixDiscountPercent === 'number' && pixDiscountPercent > 0;
+  const pixPrice = hasPixDiscount ? card.price * (1 - pixDiscountPercent / 100) : card.price;
 
   const handleAdd = () => {
     onAddToCart(card, quantity);
@@ -248,10 +251,12 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
                 <span className="font-display font-black text-3xl text-white">
                   {formatBRL(card.price)}
                 </span>
-                <span className="text-xs text-emerald-400 font-bold flex items-center gap-0.5">
-                  <Zap className="w-3.5 h-3.5" />
-                  {formatBRL(pixPrice)} no PIX
-                </span>
+                {hasPixDiscount && (
+                  <span className="text-xs text-emerald-400 font-bold flex items-center gap-0.5">
+                    <Zap className="w-3.5 h-3.5" />
+                    {formatBRL(pixPrice)} no PIX ({pixDiscountPercent}% OFF)
+                  </span>
+                )}
               </div>
               <span className="text-xs text-slate-400 mt-0.5 block">
                 {card.stockQuantity > 0 ? `Estoque disponível: ${card.stockQuantity} un.` : 'Card esgotado no momento'}

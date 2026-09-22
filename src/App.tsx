@@ -377,6 +377,7 @@ export default function App() {
               <CardItemView
                 key={card.id}
                 card={card}
+                pixDiscountPercent={config.pixDiscountPercent}
                 onSelect={(selected) => setSelectedCardForModal(selected)}
                 onViewDetails={(selected) => setSelectedCardForModal(selected)}
                 onAddToCart={(selected) => handleAddToCart(selected, 1)}
@@ -467,6 +468,7 @@ export default function App() {
       {/* Modals */}
       <CardDetailModal
         card={selectedCardForModal}
+        pixDiscountPercent={config.pixDiscountPercent}
         onClose={() => setSelectedCardForModal(null)}
         onAddToCart={(c, qty) => handleAddToCart(c, qty)}
       />

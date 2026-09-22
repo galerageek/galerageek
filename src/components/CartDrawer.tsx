@@ -56,7 +56,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     else shippingCost = 0;
   }
 
-  const discountAmount = paymentMethod === 'pix' ? (subtotal * config.pixDiscountPercent) / 100 : 0;
+  const hasPixDiscount = paymentMethod === 'pix' && typeof config.pixDiscountPercent === 'number' && config.pixDiscountPercent > 0;
+  const discountAmount = hasPixDiscount ? (subtotal * config.pixDiscountPercent) / 100 : 0;
   const totalFinal = Math.max(0, subtotal - discountAmount + shippingCost);
 
   const handleCopyPix = () => {
@@ -278,9 +279,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       }`}
                     >
                       <span>PIX Imediato</span>
-                      <span className="text-[10px] text-emerald-400 font-extrabold">
-                        {config.pixDiscountPercent}% de Desconto
-                      </span>
+                      {config.pixDiscountPercent > 0 ? (
+                        <span className="text-[10px] text-emerald-400 font-extrabold">
+                          {config.pixDiscountPercent}% de Desconto
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-400/80 font-medium">
+                          Pagamento Direto
+                        </span>
+                      )}
                     </button>
 
                     <button
@@ -355,7 +362,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <span>Subtotal</span>
                   <span className="text-white font-semibold">{formatBRL(subtotal)}</span>
                 </div>
-                {paymentMethod === 'pix' && (
+                {hasPixDiscount && discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-400">
                     <span>Desconto PIX ({config.pixDiscountPercent}%)</span>
                     <span>-{formatBRL(discountAmount)}</span>
