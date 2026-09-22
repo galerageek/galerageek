@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { StoreConfig, CartItem } from '../types';
 import { formatBRL } from '../utils/formatters';
+import { getCardPricing } from '../utils/pricing';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
 
 interface NavbarProps {
@@ -35,7 +36,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogoutAdmin,
 }) => {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalCartPrice = cart.reduce((sum, item) => sum + item.card.price * item.quantity, 0);
+  const totalCartPrice = cart.reduce((sum, item) => {
+    const pricing = getCardPricing(item.card, config);
+    return sum + pricing.effectivePrice * item.quantity;
+  }, 0);
 
   const [isShaking, setIsShaking] = React.useState(false);
   const prevCountRef = React.useRef(totalCartCount);
@@ -87,12 +91,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
-      {/* Top micro banner */}
-      <div className="bg-gradient-to-r from-amber-600 via-purple-700 to-amber-600 text-white text-xs font-semibold py-1.5 px-4 text-center tracking-wide flex items-center justify-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-300" />
-        <span>{config.bannerNotice}</span>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20 gap-4">
           {/* Logo & Store Identity */}

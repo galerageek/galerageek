@@ -16,6 +16,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   freeShippingThreshold: 250.00,
   adminPassword: 'admin',
   adminSlug: 'gerenciador-geek',
+  globalPromoActive: false,
+  globalPromoPercent: 10,
+  globalPromoTitle: 'Promoção de Aniversário',
   adminUsers: [
     {
       id: 'admin-master',

@@ -70,4 +70,7 @@ export interface StoreConfig {
   adminPassword?: string;
   adminSlug?: string;
   adminUsers?: AdminUser[];
+  globalPromoActive?: boolean;
+  globalPromoPercent?: number; // e.g. 10 for -10% in all store items
+  globalPromoTitle?: string; // e.g. "Promoção de Aniversário"
 }

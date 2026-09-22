@@ -20,6 +20,7 @@ import {
   getStoredAdminUser
 } from './utils/storage';
 import { Navbar } from './components/Navbar';
+import { TopAnnouncementBar } from './components/TopAnnouncementBar';
 import { BannerHero } from './components/BannerHero';
 import { CardFilters } from './components/CardFilters';
 import { CardItemView } from './components/CardItemView';
@@ -351,6 +352,9 @@ export default function App() {
   // Otherwise, Storefront View
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950">
+      {/* Top Announcement Bar (Seasonal promotions, discount notices, and dismiss button) */}
+      <TopAnnouncementBar config={config} />
+
       {/* Main Navbar */}
       <Navbar
         config={config}
@@ -418,6 +422,7 @@ export default function App() {
               <CardItemView
                 key={card.id}
                 card={card}
+                config={config}
                 pixDiscountPercent={config.pixDiscountPercent}
                 onSelect={(selected) => setSelectedCardForModal(selected)}
                 onViewDetails={(selected) => setSelectedCardForModal(selected)}
@@ -511,6 +516,7 @@ export default function App() {
       {/* Modals */}
       <CardDetailModal
         card={selectedCardForModal}
+        config={config}
         pixDiscountPercent={config.pixDiscountPercent}
         onClose={() => setSelectedCardForModal(null)}
         onAddToCart={(c, qty) => handleAddToCart(c, qty)}

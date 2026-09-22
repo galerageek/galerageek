@@ -10,12 +10,14 @@ import {
   Zap,
   Info
 } from 'lucide-react';
-import { CardItem } from '../types';
+import { CardItem, StoreConfig } from '../types';
 import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters';
+import { getCardPricing } from '../utils/pricing';
 import { CardFallbackPlaceholder } from './CardFallbackPlaceholder';
 
 interface CardDetailModalProps {
   card: CardItem | null;
+  config?: StoreConfig;
   pixDiscountPercent?: number;
   onClose: () => void;
   onAddToCart: (card: CardItem, quantity: number) => void;
@@ -23,6 +25,7 @@ interface CardDetailModalProps {
 
 export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   card,
+  config,
   pixDiscountPercent = 0,
   onClose,
   onAddToCart,
@@ -81,8 +84,10 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
 
   const gameMeta = getGameMeta(card.game);
   const conditionMeta = getConditionDetails(card.condition);
-  const hasPixDiscount = typeof pixDiscountPercent === 'number' && pixDiscountPercent > 0;
-  const pixPrice = hasPixDiscount ? card.price * (1 - pixDiscountPercent / 100) : card.price;
+
+  const effectiveConfig = config || { pixDiscountPercent };
+  const pricing = getCardPricing(card, effectiveConfig);
+  const hasPixDiscount = (effectiveConfig.pixDiscountPercent || 0) > 0;
 
   const handleAdd = () => {
     onAddToCart(card, quantity);
@@ -273,15 +278,27 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
           {/* Bottom Pricing & Checkout Box */}
           <div className="mt-6 pt-5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <span className="text-xs uppercase font-bold text-slate-400 block">Preço Galera Geek</span>
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs uppercase font-bold text-slate-400">Preço Galera Geek</span>
+                {pricing.isGlobalPromo && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm">
+                    🎉 {pricing.promoTitle} (-{pricing.discountPercent}%)
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                {pricing.hasDiscount && pricing.originalPrice && (
+                  <span className="text-base sm:text-lg text-slate-500 line-through">
+                    {formatBRL(pricing.originalPrice)}
+                  </span>
+                )}
                 <span className="font-display font-black text-3xl text-white">
-                  {formatBRL(card.price)}
+                  {formatBRL(pricing.effectivePrice)}
                 </span>
                 {hasPixDiscount && (
                   <span className="text-xs text-emerald-400 font-bold flex items-center gap-0.5">
                     <Zap className="w-3.5 h-3.5" />
-                    {formatBRL(pixPrice)} no PIX ({pixDiscountPercent}% OFF)
+                    {formatBRL(pricing.pixPrice)} no PIX ({effectiveConfig.pixDiscountPercent}% OFF)
                   </span>
                 )}
               </div>

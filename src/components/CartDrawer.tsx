@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CartItem, StoreConfig } from '../types';
 import { formatBRL, generateWhatsAppOrderMessage, getConditionDetails } from '../utils/formatters';
+import { calculateCartSummary, getCardPricing } from '../utils/pricing';
 import { CardImageWithFallback } from './CardImageWithFallback';
 
 interface CartDrawerProps {
@@ -44,22 +45,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [customerNotes, setCustomerNotes] = useState('');
   const [copiedPix, setCopiedPix] = useState(false);
 
-  // Totals calculation
-  const subtotal = items.reduce((sum, item) => sum + item.card.price * item.quantity, 0);
-
-  const isFreeShipping = subtotal >= config.freeShippingThreshold && shippingType !== 'sedex';
-  
-  let shippingCost = 0;
-  if (!isFreeShipping) {
-    if (shippingType === 'carta') shippingCost = config.shippingCartaRegistrada;
-    else if (shippingType === 'pac') shippingCost = config.shippingPac;
-    else if (shippingType === 'sedex') shippingCost = config.shippingSedex;
-    else shippingCost = 0;
-  }
-
+  // Totals calculation using storewide promo and payment rules
+  const summary = calculateCartSummary(items, config, shippingType, paymentMethod);
+  const subtotal = summary.subtotalEffective;
+  const shippingCost = summary.shippingCost;
+  const isFreeShipping = summary.isFreeShipping;
   const hasPixDiscount = paymentMethod === 'pix' && typeof config.pixDiscountPercent === 'number' && config.pixDiscountPercent > 0;
-  const discountAmount = hasPixDiscount ? (subtotal * config.pixDiscountPercent) / 100 : 0;
-  const totalFinal = Math.max(0, subtotal - discountAmount + shippingCost);
+  const discountAmount = summary.pixDiscountAmount;
+  const totalFinal = summary.totalFinal;
 
   const handleCopyPix = () => {
     navigator.clipboard.writeText(config.pixKey);
@@ -126,10 +119,26 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
             ) : (
               <>
+                {/* Global Store Promo Banner if active */}
+                {summary.isGlobalPromoActive && (
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-red-950/70 via-purple-950/70 to-amber-950/70 border border-red-500/40 text-amber-200 text-xs flex items-center gap-2.5 shadow-md">
+                    <Sparkles className="w-4 h-4 text-amber-300 shrink-0 animate-pulse" />
+                    <div>
+                      <span className="font-extrabold text-white block">
+                        🎉 {summary.globalPromoTitle} Ativa!
+                      </span>
+                      <span className="text-[11px] text-amber-200/90">
+                        Desconto de -{summary.globalPromoPercent}% aplicado em todos os cards do carrinho!
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* List of items */}
                 <div className="space-y-3">
                   {items.map((item) => {
                     const conditionMeta = getConditionDetails(item.card.condition);
+                    const itemPricing = getCardPricing(item.card, config);
                     return (
                       <div
                         key={item.card.id}
@@ -166,9 +175,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           </div>
 
                           <div className="flex items-center justify-between mt-2">
-                            <span className="font-extrabold text-xs text-amber-400">
-                              {formatBRL(item.card.price * item.quantity)}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {itemPricing.hasDiscount && itemPricing.originalPrice && (
+                                <span className="text-[10px] text-slate-500 line-through">
+                                  {formatBRL(itemPricing.originalPrice * item.quantity)}
+                                </span>
+                              )}
+                              <span className="font-extrabold text-xs text-amber-400">
+                                {formatBRL(itemPricing.effectivePrice * item.quantity)}
+                              </span>
+                              {itemPricing.isGlobalPromo && (
+                                <span className="text-[9px] font-black text-red-400 bg-red-500/10 px-1 rounded">
+                                  -{itemPricing.discountPercent}%
+                                </span>
+                              )}
+                            </div>
 
                             {/* Quantity Controls */}
                             <div className="flex items-center border border-slate-800 rounded-lg bg-slate-900">
@@ -359,12 +380,28 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           {items.length > 0 && (
             <div className="p-5 border-t border-slate-800 bg-slate-950 space-y-3">
               <div className="space-y-1.5 text-xs text-slate-400">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="text-white font-semibold">{formatBRL(subtotal)}</span>
-                </div>
+                {summary.isGlobalPromoActive && summary.globalPromoDiscount > 0 ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Subtotal (Preço Base)</span>
+                      <span className="text-slate-400 line-through">{formatBRL(summary.subtotalBase)}</span>
+                    </div>
+                    <div className="flex justify-between text-red-400 font-bold">
+                      <span className="flex items-center gap-1">
+                        <span>🎉 {summary.globalPromoTitle} (-{summary.globalPromoPercent}%)</span>
+                      </span>
+                      <span>-{formatBRL(summary.globalPromoDiscount)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span className="text-white font-semibold">{formatBRL(subtotal)}</span>
+                  </div>
+                )}
+
                 {hasPixDiscount && discountAmount > 0 && (
-                  <div className="flex justify-between text-emerald-400">
+                  <div className="flex justify-between text-emerald-400 font-medium">
                     <span>Desconto PIX ({config.pixDiscountPercent}%)</span>
                     <span>-{formatBRL(discountAmount)}</span>
                   </div>

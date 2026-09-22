@@ -130,12 +130,23 @@ export const generateWhatsAppOrderMessage = (
   customerAddress: string,
   customerNotes?: string
 ): string => {
+  const isGlobalPromo = Boolean(config.globalPromoActive && config.globalPromoPercent && config.globalPromoPercent > 0);
+  const promoPercent = config.globalPromoPercent || 0;
+  const promoTitle = config.globalPromoTitle || 'Promoção Especial';
+
   const itemsText = items
     .map(
-      (item, idx) =>
-        `${idx + 1}. *${item.card.name}* (${item.card.setName} #${item.card.cardNumber})\n` +
-        `   • Jogo: ${item.card.game.toUpperCase()} | Condição: ${item.card.condition} | Idioma: ${item.card.language}${item.card.isFoil ? ' | ✨ FOIL' : ''}\n` +
-        `   • Qtd: ${item.quantity}x • Unit: ${formatBRL(item.card.price)} • Sub: ${formatBRL(item.card.price * item.quantity)}`
+      (item, idx) => {
+        const basePrice = item.card.price;
+        const effectiveUnit = isGlobalPromo ? Math.max(0.01, Math.round(basePrice * (1 - promoPercent / 100) * 100) / 100) : basePrice;
+        const subtotalItem = effectiveUnit * item.quantity;
+        const promoTag = isGlobalPromo ? ` (Promo -${promoPercent}%)` : '';
+        return (
+          `${idx + 1}. *${item.card.name}* (${item.card.setName} #${item.card.cardNumber})\n` +
+          `   • Jogo: ${item.card.game.toUpperCase()} | Condição: ${item.card.condition} | Idioma: ${item.card.language}${item.card.isFoil ? ' | ✨ FOIL' : ''}\n` +
+          `   • Qtd: ${item.quantity}x • Unit: ${formatBRL(effectiveUnit)}${promoTag} • Sub: ${formatBRL(subtotalItem)}`
+        );
+      }
     )
     .join('\n\n');
 
@@ -152,10 +163,13 @@ export const generateWhatsAppOrderMessage = (
     ? (config.pixDiscountPercent > 0 ? `PIX (${config.pixDiscountPercent}% de Desconto)` : 'PIX') 
     : 'Cartão / Negociar';
 
+  const promoHeader = isGlobalPromo
+    ? `\n🎉 *PROMOÇÃO ATIVA:* ${promoTitle} (-${promoPercent}% em todos os cards!)\n`
+    : '';
+
   const text = 
 `👋 Olá, *${config.storeName}*!
-Vim através do site e gostaria de fechar este pedido de cards:
-
+Vim através do site e gostaria de fechar este pedido de cards:${promoHeader}
 📋 *ITENS DO PEDIDO:*
 ${itemsText}
 

@@ -40,7 +40,10 @@ import {
   UserCheck,
   FileSpreadsheet,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  PartyPopper,
+  Tag,
+  Percent
 } from 'lucide-react';
 import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
@@ -148,6 +151,39 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Image Health & Verification Audit Modal State
   const [isImageAuditOpen, setIsImageAuditOpen] = useState(false);
+
+  // Bulk Price Adjustment Modal State
+  const [isBulkPriceModalOpen, setIsBulkPriceModalOpen] = useState(false);
+  const [bulkPercent, setBulkPercent] = useState<number>(10);
+  const [bulkTargetGame, setBulkTargetGame] = useState<TCGGame | 'all'>('all');
+  const [bulkActionType, setBulkActionType] = useState<'discount' | 'increase'>('discount');
+
+  const handleApplyBulkPriceAdjustment = () => {
+    if (bulkPercent <= 0) {
+      showToast('Informe uma porcentagem válida acima de zero.', 'error');
+      return;
+    }
+    const factor = bulkActionType === 'discount' ? (1 - bulkPercent / 100) : (1 + bulkPercent / 100);
+    const affectedCards = cards.filter(c => bulkTargetGame === 'all' || c.game === bulkTargetGame);
+    if (affectedCards.length === 0) {
+      showToast('Nenhum card correspondente encontrado para este filtro.', 'error');
+      return;
+    }
+
+    const updatedCards = cards.map(c => {
+      if (bulkTargetGame !== 'all' && c.game !== bulkTargetGame) return c;
+      const newPrice = Math.max(0.10, Math.round(c.price * factor * 100) / 100);
+      return {
+        ...c,
+        price: newPrice,
+        originalPrice: c.originalPrice || c.price,
+      };
+    });
+
+    onImportCards(updatedCards);
+    setIsBulkPriceModalOpen(false);
+    showToast(`Sucesso! ${affectedCards.length} cards tiveram seus preços de tabela reajustados em ${bulkActionType === 'discount' ? '-' : '+'}${bulkPercent}%.`, 'success');
+  };
 
   // Live URL Verification for New Card Form
   const [newCardUrlStatus, setNewCardUrlStatus] = useState<ImageVerificationResult | null>(null);
@@ -833,6 +869,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         {activeTab === 'stock' && (
           <div className="space-y-6 animate-in fade-in duration-150">
+            {/* Active Storewide Promo Banner Alert */}
+            {configForm.globalPromoActive && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-red-950/70 via-purple-950/60 to-amber-950/70 border border-red-500/40 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <PartyPopper className="w-5 h-5 text-amber-300 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-white text-xs sm:text-sm">
+                        🎉 Promoção Geral Ativa na Loja: {configForm.globalPromoTitle || 'Promoção'}
+                      </span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
+                        -{configForm.globalPromoPercent}% EM TUDO
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-200/80 mt-0.5">
+                      Todos os cards na vitrine, no carrinho e nos pedidos de WhatsApp estão recebendo {configForm.globalPromoPercent}% de desconto automático.
+                    </p>
+                  </div>
+                </div>
+
+                {!isEstoquista && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 self-start sm:self-auto transition-transform active:scale-95 cursor-pointer shadow"
+                  >
+                    Gerenciar Promoção
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* KPI Summary Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
@@ -943,6 +1013,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isAddingNew ? 'Fechar Formulário' : 'Novo Card'}</span>
+                </button>
+
+                {/* 3.5. Bulk Price Adjustment Tool Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsBulkPriceModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border border-purple-400/30"
+                  title="Aplicar desconto percentual ou acréscimo nos preços base de todos os cards ou por jogo"
+                >
+                  <Percent className="w-4 h-4 text-purple-200" />
+                  <span>Reajuste em Lote (%)</span>
                 </button>
 
                 {/* 4. Export Planilha Liga (XLS / CSV) */}
@@ -1879,11 +1960,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     type="text"
                     value={configForm.bannerNotice}
                     onChange={(e) => setConfigForm({ ...configForm, bannerNotice: e.target.value })}
-                    placeholder="⚡ ENVIOS PARA TODO O BRASIL • CARTA REGISTRADA COM SEGURO • 5% OFF NO PIX"
+                    placeholder="Ex: ⚡ 5% OFF NO PIX • ENVIOS PARA TODO O BRASIL (ou deixe em branco para desativar)"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-amber-500"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    Faixa contínua que corre no topo de todas as páginas da loja.
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Faixa promocional no topo da loja com botão de fechar. <strong>Deixe em branco</strong> caso queira ocultar a barra completamente.
                   </span>
                 </div>
               </div>
@@ -2008,6 +2089,205 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   </div>
                   <span className="text-[10px] text-amber-400/80 mt-1.5 block">
                     Exemplo atual: <code className="text-white font-mono font-bold">#/{configForm.adminSlug || 'gerenciador-geek'}</code>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Campanha & Promoção Geral em Toda a Loja (Ex: Aniversário -10%) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-500/20 via-amber-500/20 to-purple-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
+                    <PartyPopper className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                      <span>Promoção Geral em Toda a Loja</span>
+                      <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-red-500/20 to-amber-500/20 text-amber-300 border border-amber-500/40">
+                        Ex: Aniversário -10%
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Aplica desconto automático em todos os cards da loja (com preço original riscado), sem alterar o banco de dados.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Status Pill */}
+                <div className="flex items-center gap-2">
+                  {configForm.globalPromoActive ? (
+                    <span className="text-xs font-black text-amber-300 bg-gradient-to-r from-red-500/20 to-amber-500/20 border border-amber-500/40 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                      <span>{configForm.globalPromoPercent || 0}% OFF EM TUDO ATIVO</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-slate-400 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      <span>Promoção Desativada</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Master Activation Toggle Switch */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-white block">
+                    Ativar Desconto Geral para Toda a Loja
+                  </span>
+                  <p className="text-[11px] text-slate-400 max-w-xl">
+                    Quando ativo, todos os cards na vitrine exibirão a tag da promoção com o valor recalculado e o preço original riscado. No carrinho e no WhatsApp, o desconto é discriminado de forma transparente.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(configForm.globalPromoActive)}
+                    onChange={(e) => setConfigForm({ ...configForm, globalPromoActive: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-13 h-7 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[3px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-red-500 peer-checked:to-amber-500"></div>
+                </label>
+              </div>
+
+              {/* Configuration Controls */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* Promo Title / Event Name */}
+                <div className="space-y-2">
+                  <label className="text-slate-300 font-semibold block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Nome / Título da Campanha</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-normal">Aparece nos badges e avisos</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={configForm.globalPromoTitle || ''}
+                    onChange={(e) => setConfigForm({ ...configForm, globalPromoTitle: e.target.value })}
+                    placeholder="Ex: Promoção de Aniversário 🎂"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-amber-500 text-xs"
+                  />
+                  {/* Preset quick buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-500">Sugestões rápidas:</span>
+                    {[
+                      'Promoção de Aniversário 🎂',
+                      'Black Friday Geek ⚡',
+                      'Semana do Colecionador 🃏',
+                      'Super Queima de Estoque 🔥'
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setConfigForm({ ...configForm, globalPromoTitle: preset })}
+                        className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 hover:text-amber-300 text-slate-400 text-[10px] font-medium border border-slate-700/60 transition-colors"
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Promo Discount Percent */}
+                <div className="space-y-2">
+                  <label className="text-slate-300 font-semibold block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-red-400" />
+                      <span>Porcentagem de Desconto Geral (%)</span>
+                    </span>
+                    <span className="text-[10px] text-amber-400 font-bold">
+                      {configForm.globalPromoPercent || 0}% de desconto
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      step={1}
+                      value={configForm.globalPromoPercent ?? 10}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setConfigForm({
+                          ...configForm,
+                          globalPromoPercent: isNaN(val) ? 0 : Math.max(0, Math.min(99, val))
+                        });
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-black text-sm focus:outline-none focus:border-amber-500"
+                    />
+                    <span className="absolute right-3.5 top-2.5 text-slate-500 font-bold">% OFF</span>
+                  </div>
+                  {/* Preset percent buttons */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-500">Atalhos:</span>
+                    {[5, 10, 15, 20, 25, 30].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setConfigForm({ ...configForm, globalPromoPercent: pct })}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                          configForm.globalPromoPercent === pct
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        -{pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Live Simulation Box */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 space-y-2">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Simulação em Tempo Real para o Cliente:</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Card de Exemplo</span>
+                    <span className="text-sm font-semibold text-white">Black Lotus / Charizard</span>
+                    <span className="text-xs text-slate-400 block mt-0.5">Preço Base: R$ 100,00</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 text-center">
+                    <span className="text-[10px] text-amber-400 block uppercase font-black">
+                      {configForm.globalPromoActive ? `Com ${configForm.globalPromoPercent || 0}% de Desconto` : 'Sem Promoção'}
+                    </span>
+                    <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                      {configForm.globalPromoActive && (
+                        <span className="text-xs text-slate-500 line-through">R$ 100,00</span>
+                      )}
+                      <span className="text-sm font-black text-amber-400">
+                        {configForm.globalPromoActive 
+                          ? `R$ ${(100 * (1 - (configForm.globalPromoPercent || 0) / 100)).toFixed(2).replace('.', ',')}`
+                          : 'R$ 100,00'
+                        }
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      {configForm.globalPromoActive ? 'Preço na vitrine e carrinho' : 'Preço normal de tabela'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-center">
+                    <span className="text-[10px] text-emerald-400 block uppercase font-black">
+                      À Vista no PIX ({configForm.pixDiscountPercent || 0}% OFF)
+                    </span>
+                    <span className="text-sm font-black text-emerald-400 block mt-0.5">
+                      {`R$ ${((100 * (configForm.globalPromoActive ? (1 - (configForm.globalPromoPercent || 0) / 100) : 1)) * (1 - (configForm.pixDiscountPercent || 0) / 100)).toFixed(2).replace('.', ',')}`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      {configForm.pixDiscountPercent > 0 ? 'Desconto acumulado com PIX' : 'Sem desconto adicional no PIX'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 pt-2 text-[11px] text-slate-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Segurança garantida:</strong> Seus preços originais nunca são perdidos nem corrompidos no catálogo. Quando a campanha de aniversário terminar, basta desativar a chave e tudo volta ao valor de tabela normal instantaneamente.
                   </span>
                 </div>
               </div>
@@ -2472,6 +2752,143 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         onUpdateCardImage={handleUpdateCardImage}
         onOpenArtSelectorForCard={handleOpenArtSelectorForExistingCard}
       />
+
+      {/* Bulk Price Adjustment Modal */}
+      {isBulkPriceModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Percent className="w-5 h-5 text-purple-300" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Reajuste em Lote de Preços Base</h3>
+                  <p className="text-[11px] text-slate-400">Altere permanentemente o preço de tabela de múltiplos cards</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkPriceModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Explanatory callout about the difference between this and global promo */}
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+              <span className="font-bold flex items-center gap-1 text-amber-300">
+                <Sparkles className="w-3.5 h-3.5" />
+                Dica Importante:
+              </span>
+              <p className="text-[11px] leading-relaxed text-amber-200/90">
+                Se você deseja apenas uma <strong>promoção temporária de aniversário</strong> (sem modificar seus preços cadastrados), utilize a <strong>Promoção Geral na aba Configurações</strong>.
+                Esta ferramenta abaixo altera definitivamente o preço base cadastrado no banco de dados.
+              </p>
+            </div>
+
+            {/* Target game filter */}
+            <div className="space-y-1.5 text-xs">
+              <label className="text-slate-300 font-semibold block">Aplicar em quais cards?</label>
+              <select
+                value={bulkTargetGame}
+                onChange={(e) => setBulkTargetGame(e.target.value as any)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-purple-500 text-xs"
+              >
+                <option value="all">Todos os Cards ({cards.length} modelos)</option>
+                <option value="magic">Apenas Magic: The Gathering ({cards.filter(c => c.game === 'magic').length} cards)</option>
+                <option value="pokemon">Apenas Pokémon TCG ({cards.filter(c => c.game === 'pokemon').length} cards)</option>
+                <option value="lorcana">Apenas Disney Lorcana ({cards.filter(c => c.game === 'lorcana').length} cards)</option>
+                <option value="onepiece">Apenas One Piece Card Game ({cards.filter(c => c.game === 'onepiece').length} cards)</option>
+                <option value="riftbound">Apenas Riftbound ({cards.filter(c => c.game === 'riftbound').length} cards)</option>
+              </select>
+            </div>
+
+            {/* Action Type */}
+            <div className="space-y-1.5 text-xs">
+              <label className="text-slate-300 font-semibold block">Tipo de Reajuste</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBulkActionType('discount')}
+                  className={`p-3 rounded-xl border text-center font-bold transition-all text-xs ${
+                    bulkActionType === 'discount'
+                      ? 'bg-red-500/20 text-red-300 border-red-500/50 shadow'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  📉 Reduzir Preço (Desconto -X%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkActionType('increase')}
+                  className={`p-3 rounded-xl border text-center font-bold transition-all text-xs ${
+                    bulkActionType === 'increase'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  📈 Aumentar Preço (+X%)
+                </button>
+              </div>
+            </div>
+
+            {/* Percentage Input */}
+            <div className="space-y-1.5 text-xs">
+              <label className="text-slate-300 font-semibold block">
+                Porcentagem ({bulkActionType === 'discount' ? '-' : '+'}{bulkPercent}%)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  step={1}
+                  value={bulkPercent}
+                  onChange={(e) => setBulkPercent(Math.max(1, Math.min(99, parseFloat(e.target.value) || 0)))}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-purple-500 text-xs"
+                />
+                <span className="absolute right-3.5 top-2.5 text-slate-500 font-bold">%</span>
+              </div>
+              <div className="flex items-center gap-1.5 pt-1">
+                {[5, 10, 15, 20, 25, 30].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setBulkPercent(pct)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                      bulkPercent === pct
+                        ? 'bg-purple-500 text-white border-purple-400 shadow-sm'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Confirmation & Buttons */}
+            <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsBulkPriceModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyBulkPriceAdjustment}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-transform active:scale-95 cursor-pointer"
+              >
+                Aplicar {bulkActionType === 'discount' ? '-' : '+'}{bulkPercent}% em {cards.filter(c => bulkTargetGame === 'all' || c.game === bulkTargetGame).length} cards
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
