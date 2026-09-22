@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CartItem, StoreConfig } from '../types';
 import { formatBRL, generateWhatsAppOrderMessage, getConditionDetails } from '../utils/formatters';
+import { CardImageWithFallback } from './CardImageWithFallback';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -135,13 +136,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-3 relative group"
                       >
                         <div className="w-14 h-18 shrink-0 rounded-lg overflow-hidden bg-slate-900 border border-slate-800 relative">
-                          <img
-                            src={item.card.imageUrl}
-                            alt={item.card.name}
-                            className="w-full h-full object-cover"
+                          <CardImageWithFallback
+                            card={item.card}
+                            variant="thumbnail"
+                            imgClassName="w-full h-full object-cover"
                           />
                           {item.card.isFoil && (
-                            <span className="absolute bottom-0 inset-x-0 bg-amber-400 text-slate-950 text-[8px] font-black text-center">
+                            <span className="absolute bottom-0 inset-x-0 bg-amber-400 text-slate-950 text-[8px] font-black text-center z-10">
                               FOIL
                             </span>
                           )}

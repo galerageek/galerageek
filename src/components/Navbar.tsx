@@ -19,6 +19,7 @@ interface NavbarProps {
   config: StoreConfig;
   cart: CartItem[];
   isAdminAuthenticated: boolean;
+  cartAnimationTrigger?: number;
   onOpenCart: () => void;
   onOpenAdmin: () => void;
   onLogoutAdmin: () => void;
@@ -28,12 +29,51 @@ export const Navbar: React.FC<NavbarProps> = ({
   config,
   cart,
   isAdminAuthenticated,
+  cartAnimationTrigger,
   onOpenCart,
   onOpenAdmin,
   onLogoutAdmin,
 }) => {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.card.price * item.quantity, 0);
+
+  const [isShaking, setIsShaking] = React.useState(false);
+  const prevCountRef = React.useRef(totalCartCount);
+
+  // Trigger shake & pulse animation when cartAnimationTrigger updates or total items increase
+  React.useEffect(() => {
+    if (cartAnimationTrigger && cartAnimationTrigger > 0) {
+      setIsShaking(false);
+      const frame = requestAnimationFrame(() => {
+        setIsShaking(true);
+      });
+      const timer = setTimeout(() => {
+        setIsShaking(false);
+      }, 700);
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
+    }
+  }, [cartAnimationTrigger]);
+
+  React.useEffect(() => {
+    if (totalCartCount > prevCountRef.current) {
+      setIsShaking(false);
+      const frame = requestAnimationFrame(() => {
+        setIsShaking(true);
+      });
+      const timer = setTimeout(() => {
+        setIsShaking(false);
+      }, 700);
+      prevCountRef.current = totalCartCount;
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
+    }
+    prevCountRef.current = totalCartCount;
+  }, [totalCartCount]);
 
   const instagramUrl = config.instagram.startsWith('http')
     ? config.instagram
@@ -143,15 +183,26 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Cart Button */}
+            {/* Cart Button with Micro-Interaction Animation */}
             <button
               onClick={onOpenCart}
-              className="relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs sm:text-sm shadow-md shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className={`relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs sm:text-sm shadow-md shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                isShaking ? 'animate-cart-shake animate-cart-pulse-ring ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-950' : ''
+              }`}
+              title="Abrir carrinho de compras"
+              aria-label="Abrir carrinho de compras"
             >
-              <ShoppingBag className="w-4 h-4 text-slate-950" />
+              <div className={`transition-transform flex items-center justify-center ${isShaking ? 'animate-cart-icon-wobble' : ''}`}>
+                <ShoppingBag className="w-4 h-4 text-slate-950" />
+              </div>
               <span className="hidden sm:inline">{totalCartPrice > 0 ? formatBRL(totalCartPrice) : 'Carrinho'}</span>
               {totalCartCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 text-[11px] font-extrabold flex items-center justify-center">
+                <span
+                  key={totalCartCount}
+                  className={`w-5 h-5 rounded-full bg-slate-950 text-amber-400 text-[11px] font-extrabold flex items-center justify-center transition-all ${
+                    isShaking ? 'animate-cart-badge-bounce bg-slate-950 text-amber-300 ring-2 ring-amber-400/80 shadow-md' : ''
+                  }`}
+                >
                   {totalCartCount}
                 </span>
               )}

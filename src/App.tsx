@@ -183,6 +183,8 @@ export default function App() {
   };
 
   // Cart operations
+  const [cartAnimationTrigger, setCartAnimationTrigger] = useState(0);
+
   const handleAddToCart = (card: CardItem, quantity: number = 1) => {
     if (card.stockQuantity <= 0) return;
 
@@ -197,6 +199,7 @@ export default function App() {
         return [...prev, { card, quantity: Math.min(quantity, card.stockQuantity) }];
       }
     });
+    setCartAnimationTrigger(Date.now());
     setIsCartOpen(true);
   };
 
@@ -343,6 +346,7 @@ export default function App() {
         config={config}
         cart={cart}
         isAdminAuthenticated={isAdminAuthenticated}
+        cartAnimationTrigger={cartAnimationTrigger}
         onOpenCart={() => setIsCartOpen(true)}
         onOpenAdmin={handleOpenAdmin}
         onLogoutAdmin={handleAdminLogout}

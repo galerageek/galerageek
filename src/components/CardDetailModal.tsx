@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CardItem } from '../types';
 import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters';
+import { CardFallbackPlaceholder } from './CardFallbackPlaceholder';
 
 interface CardDetailModalProps {
   card: CardItem | null;
@@ -33,14 +34,19 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'conditionGuide'>('details');
   const [currentImgSrc, setCurrentImgSrc] = useState<string>(card.imageUrl || '');
   const [retryStage, setRetryStage] = useState<number>(0);
+  const [imageError, setImageError] = useState<boolean>(!card.imageUrl);
 
   React.useEffect(() => {
     setCurrentImgSrc(card.imageUrl || '');
     setRetryStage(0);
+    setImageError(!card.imageUrl);
   }, [card.imageUrl]);
 
   const handleImageError = () => {
-    if (!currentImgSrc) return;
+    if (!currentImgSrc) {
+      setImageError(true);
+      return;
+    }
 
     if (retryStage === 0) {
       if (!currentImgSrc.includes('wsrv.nl')) {
@@ -64,8 +70,12 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
           : currentImgSrc;
         if (raw) {
           setCurrentImgSrc(`/api/card-image-proxy?url=${encodeURIComponent(raw)}`);
+          return;
         }
       }
+      setImageError(true);
+    } else {
+      setImageError(true);
     }
   };
 
@@ -96,18 +106,24 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
 
         {/* Left Side: Card Artwork Display */}
         <div className="md:w-5/12 bg-slate-950 p-6 sm:p-8 flex flex-col items-center justify-center relative border-b md:border-b-0 md:border-r border-slate-800">
-          <div className="relative w-full max-w-[280px] aspect-[1/1.4] rounded-2xl overflow-hidden shadow-2xl shadow-slate-950 border border-slate-800">
-            <img
-              src={currentImgSrc}
-              alt={card.name}
-              onError={handleImageError}
-              className={`w-full h-full object-contain ${card.isFoil ? 'foil-shine' : ''}`}
-            />
-            {card.isFoil && (
-              <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-400 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                FOIL
-              </div>
+          <div className="relative w-full max-w-[280px] aspect-[1/1.4] rounded-2xl overflow-hidden shadow-2xl shadow-slate-950 border border-slate-800 flex items-center justify-center">
+            {!imageError && currentImgSrc ? (
+              <>
+                <img
+                  src={currentImgSrc}
+                  alt={card.name}
+                  onError={handleImageError}
+                  className={`w-full h-full object-contain ${card.isFoil ? 'foil-shine' : ''}`}
+                />
+                {card.isFoil && (
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-400 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    FOIL
+                  </div>
+                )}
+              </>
+            ) : (
+              <CardFallbackPlaceholder card={card} variant="card" />
             )}
           </div>
 

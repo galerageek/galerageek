@@ -818,6 +818,87 @@ app.get('/api/card-image-proxy', async (req, res) => {
 });
 
 /**
+ * Image verification endpoint: tests if an external card image URL is accessible,
+ * returns status, headers, and suggests proxy format if needed.
+ */
+app.get('/api/verify-image-url', async (req, res) => {
+  try {
+    const rawUrl = req.query.url as string;
+    if (!rawUrl || !rawUrl.startsWith('http')) {
+      return res.status(400).json({ ok: false, error: 'URL inválida ou vazia.' });
+    }
+
+    const reqHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    };
+
+    if (rawUrl.includes('onepiece-cardgame.com')) {
+      reqHeaders['Referer'] = 'https://en.onepiece-cardgame.com/';
+    } else if (rawUrl.includes('scryfall.io') || rawUrl.includes('scryfall.com')) {
+      reqHeaders['Referer'] = 'https://scryfall.com/';
+    } else if (rawUrl.includes('pvp.net') || rawUrl.includes('leagueoflegends.com') || rawUrl.includes('rgpub.io')) {
+      reqHeaders['Referer'] = 'https://playruneterra.com/';
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      // Try HEAD first, then fallback to GET
+      let upstream = await fetch(rawUrl, {
+        method: 'HEAD',
+        headers: reqHeaders,
+        signal: controller.signal
+      });
+
+      if (!upstream.ok || upstream.status === 405) {
+        upstream = await fetch(rawUrl, {
+          method: 'GET',
+          headers: reqHeaders,
+          signal: controller.signal
+        });
+      }
+
+      clearTimeout(timeout);
+
+      const contentType = upstream.headers.get('content-type') || '';
+      const isImage = contentType.startsWith('image/') || contentType.includes('octet-stream');
+      const isOk = upstream.ok && isImage;
+
+      // Check if proxy makes it reliable
+      let suggestedProxy = '';
+      if (!isOk || rawUrl.includes('onepiece-cardgame.com') || rawUrl.includes('cmsassets.rgpub.io')) {
+        suggestedProxy = `/api/card-image-proxy?url=${encodeURIComponent(rawUrl)}`;
+      }
+
+      return res.json({
+        ok: isOk,
+        status: upstream.status,
+        contentType,
+        url: rawUrl,
+        suggestedProxy,
+        testedAt: new Date().toISOString()
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timeout);
+      // If direct fetch failed, try wsrv.nl or proxy
+      const suggestedProxy = `/api/card-image-proxy?url=${encodeURIComponent(rawUrl)}`;
+      return res.json({
+        ok: false,
+        status: 0,
+        error: fetchErr?.message || 'Conexão recusada ou timeout',
+        url: rawUrl,
+        suggestedProxy,
+        testedAt: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error?.message || 'Erro interno ao verificar imagem' });
+  }
+});
+
+/**
  * 2. Search card details & auto-fetch official image and Liga price by name
  */
 app.get('/api/search-card-data', async (req, res) => {

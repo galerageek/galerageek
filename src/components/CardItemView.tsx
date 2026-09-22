@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ShoppingBag, Eye, Sparkles, Check, Zap } from 'lucide-react';
 import { CardItem } from '../types';
 import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters';
+import { CardFallbackPlaceholder } from './CardFallbackPlaceholder';
 
 interface CardItemViewProps {
   card: CardItem;
@@ -121,10 +122,8 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
             />
           </div>
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-slate-950 rounded-[6px] border border-slate-800">
-            <span className="text-3xl mb-1.5">🃏</span>
-            <span className="text-xs font-bold text-slate-400 line-clamp-2">{card.name}</span>
-            <span className="text-[10px] text-slate-600 mt-1 truncate w-full">{card.setName}</span>
+          <div className="w-full h-full flex items-center justify-center">
+            <CardFallbackPlaceholder card={card} variant="card" />
           </div>
         )}
 

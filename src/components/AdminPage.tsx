@@ -38,7 +38,9 @@ import {
   EyeOff,
   ShieldAlert,
   UserCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
@@ -47,6 +49,15 @@ import { exportCatalogJSON } from '../utils/storage';
 import { CardCameraModal } from './CardCameraModal';
 import { CardPrintsSelectorModal } from './CardPrintsSelectorModal';
 import { LigaExportModal } from './LigaExportModal';
+import { ImageAuditModal } from './ImageAuditModal';
+import { CardFallbackPlaceholder } from './CardFallbackPlaceholder';
+import { CardImageWithFallback } from './CardImageWithFallback';
+import {
+  verifyImageUrl,
+  getOptimizedImageUrl,
+  ImageVerificationResult,
+  isSpecialRestrictedGame
+} from '../utils/imageVerification';
 import { optimizeImageForAnalysis } from '../utils/imageOptimizer';
 import { removeWhiteBackground, detectWhiteBackground, matchPageBackgroundColor } from '../utils/imageTransparency';
 
@@ -134,6 +145,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Liga Sheet Export Modal State
   const [isLigaExportOpen, setIsLigaExportOpen] = useState(false);
+
+  // Image Health & Verification Audit Modal State
+  const [isImageAuditOpen, setIsImageAuditOpen] = useState(false);
+
+  // Live URL Verification for New Card Form
+  const [newCardUrlStatus, setNewCardUrlStatus] = useState<ImageVerificationResult | null>(null);
+  const [isVerifyingNewCardUrl, setIsVerifyingNewCardUrl] = useState(false);
 
   // In-UI Toast Notification
   const [adminToast, setAdminToast] = useState<{
@@ -400,6 +418,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
+  // Live URL verification for New Card Image URL
+  React.useEffect(() => {
+    if (!newCard.imageUrl || !newCard.imageUrl.trim()) {
+      setNewCardUrlStatus(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsVerifyingNewCardUrl(true);
+      const res = await verifyImageUrl(newCard.imageUrl, (newCard.game as TCGGame) || 'magic');
+      setNewCardUrlStatus(res);
+      setIsVerifyingNewCardUrl(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [newCard.imageUrl, newCard.game]);
+
+  const handleUpdateCardImage = (cardId: string, newImageUrl: string) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (card && onUpdateCard) {
+      const opt = getOptimizedImageUrl(newImageUrl, card.game);
+      onUpdateCard({ ...card, imageUrl: opt });
+      showToast(`Imagem do card "${card.name}" atualizada com sucesso!`, 'success');
+    }
+  };
+
   // Handle Save New Card
   const handleCreateCard = (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,6 +450,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       return;
     }
 
+    const resolvedImageUrl = getOptimizedImageUrl(newCard.imageUrl, (newCard.game as TCGGame) || 'magic');
+
     const cardToAdd: CardItem = {
       id: `card-${Date.now()}`,
       name: newCard.name || 'Novo Card',
@@ -415,7 +459,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       setName: newCard.setName || 'Coleção',
       setCode: newCard.setCode?.toUpperCase() || 'SET',
       cardNumber: newCard.cardNumber || '001',
-      imageUrl: newCard.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+      imageUrl: resolvedImageUrl,
       condition: (newCard.condition as CardCondition) || 'NM',
       language: (newCard.language as CardLanguage) || 'PT',
       isFoil: Boolean(newCard.isFoil),
@@ -430,6 +474,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     onAddCard(cardToAdd);
     setIsAddingNew(false);
     setLigaPriceInfo(null);
+    setNewCardUrlStatus(null);
     setNewCard({
       name: '',
       game: 'magic',
@@ -911,6 +956,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   <span>Exportar Planilha Liga</span>
                 </button>
 
+                {/* 4.5. Auditoria de Imagens e Fallback Visual */}
+                <button
+                  type="button"
+                  onClick={() => setIsImageAuditOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-700 hover:from-blue-600 hover:to-cyan-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border border-cyan-400/30"
+                  title="Verificar integridade de todas as URLs de imagem (One Piece, Riftbound, etc.) e monitorar status do Fallback Visual da loja"
+                >
+                  <ShieldCheck className="w-4 h-4 text-cyan-200" />
+                  <span>Auditoria de Imagens</span>
+                </button>
+
                 {/* 5. Export JSON Backup */}
                 <button
                   onClick={() => {
@@ -1213,37 +1269,105 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
-                    {newCard.imageUrl ? (
-                      <div className="relative group/thumb cursor-pointer shrink-0" onClick={handleOpenArtSelectorForNewCard} title="Clique para trocar a arte oficial">
-                        <img
+                    <div 
+                      className="relative group/thumb cursor-pointer shrink-0 w-12 h-16 rounded-xl overflow-hidden border border-amber-500/40 bg-slate-950 shadow-md flex items-center justify-center"
+                      onClick={handleOpenArtSelectorForNewCard} 
+                      title="Clique para trocar a arte oficial ou foto real"
+                    >
+                      {newCard.imageUrl ? (
+                        <CardImageWithFallback
+                          card={newCard as any}
                           src={newCard.imageUrl}
-                          alt="Prévia"
-                          className="w-10 h-14 object-cover rounded-lg border border-amber-500/40 bg-slate-950 shadow-md group-hover/thumb:opacity-75 transition-opacity"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80';
-                          }}
+                          variant="thumbnail"
+                          imgClassName="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 bg-black/60 rounded-lg text-[9px] text-amber-300 font-bold transition-opacity">
-                          Trocar
-                        </div>
+                      ) : (
+                        <CardFallbackPlaceholder
+                          card={{
+                            name: newCard.name || 'Novo Card',
+                            game: (newCard.game as TCGGame) || 'magic',
+                            setName: newCard.setName || 'Coleção',
+                            setCode: newCard.setCode || 'ED',
+                            cardNumber: newCard.cardNumber || '001',
+                            condition: (newCard.condition as CardCondition) || 'NM',
+                            rarity: (newCard.rarity as CardRarity) || 'Rara',
+                            isFoil: Boolean(newCard.isFoil),
+                            colorOrAttribute: newCard.colorOrAttribute
+                          }}
+                          variant="thumbnail"
+                        />
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 bg-black/60 rounded-xl text-[9px] text-amber-300 font-bold transition-opacity">
+                        Trocar
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleOpenArtSelectorForNewCard}
-                        className="w-10 h-14 rounded-lg border border-dashed border-slate-700 bg-slate-950 text-slate-500 hover:text-amber-400 hover:border-amber-500/40 flex flex-col items-center justify-center shrink-0 transition-colors"
-                        title="Escolher arte oficial ou foto real"
-                      >
-                        <Layers className="w-4 h-4" />
-                      </button>
-                    )}
-                    <input
-                      type="url"
-                      placeholder="https://... (Preenchido automaticamente ao buscar nome ou selecionar arte)"
-                      value={newCard.imageUrl}
-                      onChange={(e) => setNewCard({ ...newCard, imageUrl: e.target.value })}
-                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500"
-                    />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          placeholder="https://... (Preenchido automaticamente ao buscar nome ou selecionar arte)"
+                          value={newCard.imageUrl || ''}
+                          onChange={(e) => setNewCard({ ...newCard, imageUrl: e.target.value })}
+                          className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!newCard.imageUrl) return;
+                            setIsVerifyingNewCardUrl(true);
+                            const res = await verifyImageUrl(newCard.imageUrl, (newCard.game as TCGGame) || 'magic');
+                            setNewCardUrlStatus(res);
+                            setIsVerifyingNewCardUrl(false);
+                          }}
+                          disabled={!newCard.imageUrl || isVerifyingNewCardUrl}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-xs font-semibold shrink-0 border border-slate-700 flex items-center gap-1"
+                          title="Testar conectividade desta imagem"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isVerifyingNewCardUrl ? 'animate-spin' : ''}`} />
+                          <span>Testar</span>
+                        </button>
+                      </div>
+
+                      {/* Verification Status Feedback */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+                        {isVerifyingNewCardUrl ? (
+                          <span className="text-blue-400 font-medium flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Verificando conectividade da imagem...
+                          </span>
+                        ) : newCardUrlStatus ? (
+                          newCardUrlStatus.ok ? (
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Imagem verificada e acessível online.
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-amber-400 font-semibold flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" /> Imagem inacessível. O Fallback Visual temático ({newCard.game || 'TCG'}) protegerá o layout da loja.
+                              </span>
+                              {newCardUrlStatus.suggestedProxy && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (newCardUrlStatus.suggestedProxy) {
+                                      setNewCard({ ...newCard, imageUrl: newCardUrlStatus.suggestedProxy });
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
+                                >
+                                  <Wand2 className="w-2.5 h-2.5" />
+                                  Usar Proxy Anti-Bloqueio
+                                </button>
+                              )}
+                            </div>
+                          )
+                        ) : !newCard.imageUrl ? (
+                          <span className="text-slate-500 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-cyan-400" /> Sem URL: o Fallback Visual temático protegerá o layout da loja automaticamente.
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1304,16 +1428,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                             <div className="flex items-center gap-3">
                               <div
                                 onClick={() => handleOpenArtSelectorForExistingCard(card)}
-                                className="relative group/thumb cursor-pointer shrink-0"
+                                className="relative group/thumb cursor-pointer shrink-0 w-10 h-14 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 group-hover/thumb:border-amber-500 transition-colors shadow-sm"
                                 title="Clique para trocar a imagem ou escolher outra edição oficial"
                               >
-                                <img
-                                  src={card.imageUrl}
-                                  alt={card.name}
-                                  className="w-10 h-14 object-cover rounded-lg border border-slate-700 bg-slate-950 group-hover/thumb:border-amber-500 transition-colors shadow-sm"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80';
-                                  }}
+                                <CardImageWithFallback
+                                  card={card}
+                                  variant="thumbnail"
+                                  imgClassName="w-10 h-14 object-cover"
                                 />
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 bg-black/60 rounded-lg text-[9px] text-amber-300 font-bold transition-opacity">
                                   <Layers className="w-3 h-3" />
@@ -1327,6 +1448,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                   <span className="text-[10px] text-slate-400 font-mono">
                                     #{card.cardNumber}
                                   </span>
+                                  {isSpecialRestrictedGame(card.game) && (
+                                    <span
+                                      className="px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 font-bold text-[8px]"
+                                      title="Card com proteção de imagem. Fallback visual temático ativo caso a imagem falhe."
+                                    >
+                                      Protegido
+                                    </span>
+                                  )}
                                   {card.isFoil && (
                                     <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 font-bold text-[9px]">
                                       FOIL
@@ -2333,6 +2462,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         onClose={() => setIsLigaExportOpen(false)}
         cards={cards}
         defaultGameFilter={selectedGameFilter}
+      />
+
+      {/* Image Verification & Health Audit Modal */}
+      <ImageAuditModal
+        isOpen={isImageAuditOpen}
+        onClose={() => setIsImageAuditOpen(false)}
+        cards={cards}
+        onUpdateCardImage={handleUpdateCardImage}
+        onOpenArtSelectorForCard={handleOpenArtSelectorForExistingCard}
       />
     </div>
   );
