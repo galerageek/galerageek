@@ -148,51 +148,169 @@ export function getLigaExtras(card: CardItem): string {
 }
 
 /**
- * Remove qualquer anotação entre parênteses para manter apenas o nome limpo do card.
- * Exemplo: "Sol Ring (Anel Solar)" -> "Sol Ring"
- * Exemplo: "Anel Solar (Sol Ring)" -> "Anel Solar"
- * Exemplo: "Charizard ex (Special Illustration Rare)" -> "Charizard ex"
+ * Palavras-chave que caracterizam variantes, ilustrações, raridades especiais ou tratamentos,
+ * e que NUNCA devem ser interpretadas como nomes traduzidos do card.
  */
-export function sanitizeCardName(rawName?: string): string {
-  if (!rawName) return '';
-  return rawName.replace(/\s*\([^)]*\)/g, '').trim();
+const VARIANT_DESCRIPTOR_KEYWORDS = [
+  'promo', 'foil', 'enchanted', 'manga', 'parallel', 'secret', 'special', 'illustration',
+  'rare', 'alt', 'alternate', 'art', 'borderless', 'showcase', 'extended', 'retro', 'frame',
+  'etched', 'van gogh', 'shiny', 'textured', 'stamped', 'prerelease', 'pre-release',
+  'buy-a-box', 'oversized', 'full art', 'hyperspace', 'serialized', 'stamp', 'edition',
+  'carta oficial', 'campeão oficial', 'oficial pt-br', 'oficial', 'lead', 'leader',
+  'custom', 'token', 'emblem', 'oversize', 'versão', 'versao', 'full-art'
+];
+
+/**
+ * Detecta se uma string entre parênteses é um descritor de variante/arte/raridade.
+ */
+export function isVariantDescriptor(text?: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase().trim();
+  return VARIANT_DESCRIPTOR_KEYWORDS.some(k => lower.includes(k));
 }
 
 /**
- * Se o card possuir ambos os nomes separados por parênteses (ex: "Sol Ring (Anel Solar)" ou "Anel Solar (Sol Ring)"),
- * extrai o nome principal e o nome secundário (traduzido).
+ * Camada de Processamento de String:
+ * Remove qualquer sufixo ou expressão entre parênteses (...), colchetes [...] ou chaves {...},
+ * além de sobras de caracteres como hífens finais, barras ou pontuações residuais.
+ * Garante que apenas o nome canônico e limpo do card seja mantido para reconhecimento na Liga.
+ *
+ * Exemplos:
+ * - "Sol Ring (Anel Solar)" -> "Sol Ring"
+ * - "Anel Solar (Sol Ring)" -> "Anel Solar"
+ * - "Charizard ex (Special Illustration Rare)" -> "Charizard ex"
+ * - "Elsa - Spirit of Winter (Enchanted)" -> "Elsa - Spirit of Winter"
+ * - "Pikachu with Grey Felt Hat (Van Gogh Promo)" -> "Pikachu with Grey Felt Hat"
+ * - "Card Name - (Alternative Art)" -> "Card Name"
  */
-export function extractCleanNames(rawName: string, language?: string): { namePT: string; nameEN: string } {
+export function sanitizeCardName(rawName?: string): string {
+  if (!rawName) return '';
+  let str = rawName;
+  // Remove iterativamente todos os blocos de parênteses, colchetes e chaves
+  while (/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/.test(str)) {
+    str = str.replace(/\s*(\([^)]*\)|\[[^\]]*\]|\{[^}]*\})/g, '');
+  }
+  // Remove pontuações residuais deixadas no final pela remoção (ex: "Card - (Promo)" -> "Card")
+  str = str.replace(/[\s\-_/:,;]+$/, '');
+  // Normaliza espaços múltiplos
+  str = str.replace(/\s{2,}/g, ' ');
+  return str.trim();
+}
+
+/**
+ * Heurísticas para detecção de termos em português em nomes bilíngues
+ */
+function hasPortugueseWords(text: string): boolean {
+  return /\b(o|a|os|as|do|da|dos|das|no|na|nos|nas|de|em|para|com|por|anel|solar|espada|dragão|dragao|mago|mítica|mitica|estação|estacao|duplicação|duplicacao|cripta|selvagem|chama|força|forca|imperdoável|imperdoavel|vento|rebelde|comandante)\b/i.test(text);
+}
+
+/**
+ * Heurísticas para detecção de termos em inglês em nomes bilíngues
+ */
+function hasEnglishWords(text: string): boolean {
+  return /\b(the|of|in|to|for|with|by|ring|sword|dragon|mage|season|crypt|wild|flame|force|unforgiven|wind|rebel|commander|demolitionist|shadows|spirit|winter)\b/i.test(text);
+}
+
+/**
+ * Extrai e separa os nomes em Português e Inglês limpos, sem qualquer parêntese ou sufixo.
+ * Se o card possuía um sufixo de variante entre parênteses (ex: "Charizard ex (Special Illustration Rare)"),
+ * remove completamente o sufixo e aloca apenas o nome oficial no campo correto.
+ * Se possuía tradução bilíngue (ex: "Sol Ring (Anel Solar)"), separa cada nome na sua coluna respectiva.
+ */
+export function extractCleanNames(rawName: string, language?: string): { namePT: string; nameEN: string; variantNote: string } {
   const clean = (rawName || '').trim();
-  const match = clean.match(/^([^(]+)\s*\(([^)]+)\)$/);
   const langSigla = normalizeLigaLanguage(language);
   const isPT = langSigla === 'BR';
 
+  const match = clean.match(/^([^(]+)\s*\(([^)]+)\)$/);
   if (match) {
-    const first = match[1].trim();
-    const inside = match[2].trim();
+    const firstClean = sanitizeCardName(match[1]);
+    const insideRaw = match[2].trim();
 
-    // Se o idioma for Português (BR) e o primeiro estiver em inglês ou pt
+    // Se o conteúdo entre parênteses é um descritor de variante/arte/raridade (ex: "Special Illustration Rare", "Van Gogh Promo")
+    if (isVariantDescriptor(insideRaw)) {
+      if (isPT) {
+        return { namePT: firstClean, nameEN: '', variantNote: insideRaw };
+      } else {
+        return { namePT: '', nameEN: firstClean, variantNote: insideRaw };
+      }
+    }
+
+    // Se não é um descritor de variante, é uma tradução bilíngue legítima (ex: "Sol Ring (Anel Solar)")
+    const insideClean = sanitizeCardName(insideRaw);
+
+    if (hasEnglishWords(firstClean) && hasPortugueseWords(insideClean)) {
+      return { nameEN: firstClean, namePT: insideClean, variantNote: '' };
+    }
+    if (hasPortugueseWords(firstClean) && hasEnglishWords(insideClean)) {
+      return { namePT: firstClean, nameEN: insideClean, variantNote: '' };
+    }
+
     if (isPT) {
-      // Se dentro for o nome em inglês ou vice-versa, separamos
-      return {
-        namePT: sanitizeCardName(first),
-        nameEN: sanitizeCardName(inside)
-      };
+      return { namePT: firstClean, nameEN: insideClean, variantNote: '' };
     } else {
-      return {
-        namePT: sanitizeCardName(inside),
-        nameEN: sanitizeCardName(first)
-      };
+      return { namePT: insideClean, nameEN: firstClean, variantNote: '' };
     }
   }
 
+  // Nome padrão sem parênteses no formato inicial
   const base = sanitizeCardName(clean);
   if (isPT) {
-    return { namePT: base, nameEN: '' };
+    return { namePT: base, nameEN: '', variantNote: '' };
   } else {
-    return { namePT: '', nameEN: base };
+    return { namePT: '', nameEN: base, variantNote: '' };
   }
+}
+
+/**
+ * Camada de Processamento de Dados do Card para a Exportação da Liga:
+ * Normaliza e limpa todos os campos do card para garantir conformidade estrita
+ * com os requisitos do sistema de Importação de Estoque da Liga (LigaMagic / LigaPokemon / etc.).
+ */
+export function cleanCardForLigaExport(card: CardItem) {
+  const langSigla = normalizeLigaLanguage(card.language);
+  const condSigla = normalizeLigaCondition(card.condition);
+  const rarSigla = normalizeLigaRarity(card.rarity);
+  const corSigla = normalizeLigaColor(card.colorOrAttribute);
+  const extras = getLigaExtras(card);
+
+  // Executa a camada de processamento de string dos nomes
+  const { namePT, nameEN, variantNote } = extractCleanNames(card.name, card.language);
+
+  // Limpeza do nome da edição e sigla
+  const edicaoPTBR = ''; // opcional
+  const edicaoEN = sanitizeCardName(card.setName || '');
+  const edicaoSigla = (card.setCode || '').toUpperCase().trim();
+
+  // Quantidade física
+  const quantidade = Math.max(1, card.stockQuantity || 1);
+  const cardNumero = (card.cardNumber || '').trim();
+
+  // Montagem do comentário (anota preço e observações úteis de variante se houver)
+  const commentParts: string[] = [];
+  if (card.price) {
+    commentParts.push(`Preço Galera Geek: R$ ${card.price.toFixed(2).replace('.', ',')}`);
+  }
+  if (variantNote) {
+    commentParts.push(`Versão: ${variantNote}`);
+  }
+  const comentario = commentParts.join(' | ');
+
+  return {
+    edicaoPTBR,
+    edicaoEN,
+    edicaoSigla,
+    namePT,
+    nameEN,
+    quantidade,
+    condSigla,
+    langSigla,
+    rarSigla,
+    corSigla,
+    extras,
+    cardNumero,
+    comentario
+  };
 }
 
 /**
@@ -222,42 +340,22 @@ export function generateLigaCSV(cards: CardItem[], targetGame?: TCGGame): string
   const rows: string[] = [LIGAMAGIC_CSV_HEADER];
 
   for (const card of filtered) {
-    const langSigla = normalizeLigaLanguage(card.language);
-    const condSigla = normalizeLigaCondition(card.condition);
-    const rarSigla = normalizeLigaRarity(card.rarity);
-    const corSigla = normalizeLigaColor(card.colorOrAttribute);
-    const extras = getLigaExtras(card);
-
-    // Nomes limpos e separados sem parênteses:
-    // A Liga exige que Card (PT) tenha apenas o nome em português e Card (EN) apenas o nome em inglês.
-    const { namePT, nameEN } = extractCleanNames(card.name, card.language);
-
-    // Edição
-    const edicaoPTBR = ''; // opcional
-    const edicaoEN = card.setName || '';
-    const edicaoSigla = (card.setCode || '').toUpperCase();
-
-    // Quantidade física em estoque (mínimo 1 se tiver estoque, ou a quantidade real)
-    const quantidade = Math.max(1, card.stockQuantity || 1);
-    const cardNumero = card.cardNumber || '';
-    
-    // Comentário opcional com preço sugerido em reais da Galera Geek
-    const comentario = card.price ? `Preço Galera Geek: R$ ${card.price.toFixed(2).replace('.', ',')}` : '';
+    const item = cleanCardForLigaExport(card);
 
     const row = [
-      escapeCSVField(edicaoPTBR),
-      escapeCSVField(edicaoEN),
-      escapeCSVField(edicaoSigla),
-      escapeCSVField(namePT),
-      escapeCSVField(nameEN),
-      escapeCSVField(quantidade),
-      escapeCSVField(condSigla),
-      escapeCSVField(langSigla),
-      escapeCSVField(rarSigla),
-      escapeCSVField(corSigla),
-      escapeCSVField(extras),
-      escapeCSVField(cardNumero),
-      escapeCSVField(comentario)
+      escapeCSVField(item.edicaoPTBR),
+      escapeCSVField(item.edicaoEN),
+      escapeCSVField(item.edicaoSigla),
+      escapeCSVField(item.namePT),
+      escapeCSVField(item.nameEN),
+      escapeCSVField(item.quantidade),
+      escapeCSVField(item.condSigla),
+      escapeCSVField(item.langSigla),
+      escapeCSVField(item.rarSigla),
+      escapeCSVField(item.corSigla),
+      escapeCSVField(item.extras),
+      escapeCSVField(item.cardNumero),
+      escapeCSVField(item.comentario)
     ].join(',');
 
     rows.push(row);
@@ -345,32 +443,22 @@ export function generateLigaExcelXLS(cards: CardItem[], targetGame?: TCGGame): s
 
   // Data rows
   for (const card of filtered) {
-    const langSigla = normalizeLigaLanguage(card.language);
-    const condSigla = normalizeLigaCondition(card.condition);
-    const rarSigla = normalizeLigaRarity(card.rarity);
-    const corSigla = normalizeLigaColor(card.colorOrAttribute);
-    const extras = getLigaExtras(card);
-    const { namePT, nameEN } = extractCleanNames(card.name, card.language);
-    const edicaoEN = card.setName || '';
-    const edicaoSigla = (card.setCode || '').toUpperCase();
-    const quantidade = Math.max(1, card.stockQuantity || 1);
-    const cardNumero = card.cardNumber || '';
-    const comentario = card.price ? `Preço Galera Geek: R$ ${card.price.toFixed(2).replace('.', ',')}` : '';
+    const item = cleanCardForLigaExport(card);
 
     xml += `   <Row ss:Height="18">\n`;
     xml += `    <Cell><Data ss:Type="String"></Data></Cell>\n`; // Edicao (PTBR)
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(edicaoEN)}</Data></Cell>\n`; // Edicao (EN)
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(edicaoSigla)}</Data></Cell>\n`; // Edicao (Sigla)
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(namePT)}</Data></Cell>\n`; // Card (PT)
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(nameEN)}</Data></Cell>\n`; // Card (EN)
-    xml += `    <Cell ss:StyleID="Number"><Data ss:Type="Number">${quantidade}</Data></Cell>\n`; // Quantidade
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(condSigla)}</Data></Cell>\n`; // Qualidade
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(langSigla)}</Data></Cell>\n`; // Idioma
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(rarSigla)}</Data></Cell>\n`; // Raridade
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(corSigla)}</Data></Cell>\n`; // Cor
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(extras)}</Data></Cell>\n`; // Extras
-    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(cardNumero)}</Data></Cell>\n`; // Card #
-    xml += `    <Cell><Data ss:Type="String">${escapeXml(comentario)}</Data></Cell>\n`; // Comentario
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(item.edicaoEN)}</Data></Cell>\n`; // Edicao (EN)
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.edicaoSigla)}</Data></Cell>\n`; // Edicao (Sigla)
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(item.namePT)}</Data></Cell>\n`; // Card (PT)
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(item.nameEN)}</Data></Cell>\n`; // Card (EN)
+    xml += `    <Cell ss:StyleID="Number"><Data ss:Type="Number">${item.quantidade}</Data></Cell>\n`; // Quantidade
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.condSigla)}</Data></Cell>\n`; // Qualidade
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.langSigla)}</Data></Cell>\n`; // Idioma
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.rarSigla)}</Data></Cell>\n`; // Raridade
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.corSigla)}</Data></Cell>\n`; // Cor
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.extras)}</Data></Cell>\n`; // Extras
+    xml += `    <Cell ss:StyleID="Center"><Data ss:Type="String">${escapeXml(item.cardNumero)}</Data></Cell>\n`; // Card #
+    xml += `    <Cell><Data ss:Type="String">${escapeXml(item.comentario)}</Data></Cell>\n`; // Comentario
     xml += `   </Row>\n`;
   }
 

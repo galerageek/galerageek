@@ -11,7 +11,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { CardItem, TCGGame } from '../types';
-import { downloadLigaExport, LIGAMAGIC_CSV_HEADER } from '../utils/ligaExport';
+import { downloadLigaExport, LIGAMAGIC_CSV_HEADER, cleanCardForLigaExport } from '../utils/ligaExport';
 import { getGameMeta } from '../utils/formatters';
 
 interface LigaExportModalProps {
@@ -177,23 +177,32 @@ export const LigaExportModal: React.FC<LigaExportModalProps> = ({
                   Nenhum card cadastrado para este jogo.
                 </div>
               ) : (
-                filteredCards.slice(0, 5).map((card) => (
-                  <div key={card.id} className="p-2.5 flex items-center justify-between text-[11px]">
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="font-bold text-white truncate">{card.name}</span>
-                      <span className="text-slate-500 font-mono text-[10px]">[{card.setCode || 'ED'}]</span>
-                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
-                        {card.condition}
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
-                        {card.language}
-                      </span>
+                filteredCards.slice(0, 5).map((card) => {
+                  const item = cleanCardForLigaExport(card);
+                  const cleanNameDisplay = item.namePT && item.nameEN
+                    ? `${item.namePT} / ${item.nameEN}`
+                    : (item.namePT || item.nameEN || card.name);
+
+                  return (
+                    <div key={card.id} className="p-2.5 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-bold text-white truncate" title={`Card (PT): ${item.namePT || '-'} | Card (EN): ${item.nameEN || '-'}`}>
+                          {cleanNameDisplay}
+                        </span>
+                        <span className="text-slate-500 font-mono text-[10px]">[{item.edicaoSigla || 'ED'}]</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
+                          {item.condSigla}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
+                          {item.langSigla}
+                        </span>
+                      </div>
+                      <div className="font-mono text-emerald-400 font-semibold shrink-0">
+                        Qtd: {item.quantidade}
+                      </div>
                     </div>
-                    <div className="font-mono text-emerald-400 font-semibold shrink-0">
-                      Qtd: {card.stockQuantity}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
             {filteredCards.length > 5 && (
