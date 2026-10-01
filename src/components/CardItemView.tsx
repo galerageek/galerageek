@@ -144,13 +144,18 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
               </span>
             )}
 
-            {/* Foil Tag */}
-            {card.isFoil && (
+            {/* Foil / Enchanted Tag */}
+            {card.rarity === 'Enchanted' || (card.finishType && card.finishType.toLowerCase().includes('enchanted')) ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-r from-purple-500 via-pink-400 to-amber-300 text-slate-950 shadow-md">
+                <Sparkles className="w-2.5 h-2.5" />
+                ENCHANTED
+              </span>
+            ) : card.isFoil ? (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-400 text-slate-950 shadow-md">
                 <Sparkles className="w-2.5 h-2.5" />
                 FOIL
               </span>
-            )}
+            ) : null}
           </div>
         </div>
 

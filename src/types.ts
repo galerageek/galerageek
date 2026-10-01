@@ -74,3 +74,21 @@ export interface StoreConfig {
   globalPromoPercent?: number; // e.g. 10 for -10% in all store items
   globalPromoTitle?: string; // e.g. "Promoção de Aniversário"
 }
+
+export interface CardLigaAuditItem {
+  id: string;
+  name: string;
+  game: TCGGame;
+  setName: string;
+  setCode: string;
+  cardNumber: string;
+  rarity: string;
+  imageUrl?: string;
+  currentPrice: number;
+  menorPrecoLiga: number;
+  precoMedioLiga: number;
+  diffPercent: number;
+  isOutdated: boolean;
+  status: 'above' | 'below' | 'aligned';
+  ligaUrl: string;
+}

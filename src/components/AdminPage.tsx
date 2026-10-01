@@ -45,7 +45,7 @@ import {
   Tag,
   Percent
 } from 'lucide-react';
-import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole } from '../types';
+import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole, CardLigaAuditItem } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
 import { formatBRL, getGameMeta } from '../utils/formatters';
 import { exportCatalogJSON } from '../utils/storage';
@@ -53,6 +53,7 @@ import { CardCameraModal } from './CardCameraModal';
 import { CardPrintsSelectorModal } from './CardPrintsSelectorModal';
 import { LigaExportModal } from './LigaExportModal';
 import { ImageAuditModal } from './ImageAuditModal';
+import { LigaPriceAuditModal } from './LigaPriceAuditModal';
 import { CardFallbackPlaceholder } from './CardFallbackPlaceholder';
 import { CardImageWithFallback } from './CardImageWithFallback';
 import {
@@ -145,6 +146,122 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     precoMedio: number;
     ligaUrl: string;
   } | null>(null);
+  const [isCheckingNewCardLiga, setIsCheckingNewCardLiga] = useState(false);
+
+  // Liga Price Audit State & Outdated Monitoring (10% discrepancy)
+  const [isLigaPriceAuditOpen, setIsLigaPriceAuditOpen] = useState(false);
+  const [ligaAuditItems, setLigaAuditItems] = useState<CardLigaAuditItem[]>([]);
+  const [isAuditingLigaPrices, setIsAuditingLigaPrices] = useState(false);
+  const hasNotifiedAdminOutdatedRef = React.useRef(false);
+
+  const runLigaPriceAudit = async () => {
+    if (cards.length === 0) return;
+    setIsAuditingLigaPrices(true);
+    try {
+      const res = await fetch('/api/check-all-liga-prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.cards)) {
+        setLigaAuditItems(data.cards);
+        if (data.outdatedCount > 0 && !hasNotifiedAdminOutdatedRef.current) {
+          hasNotifiedAdminOutdatedRef.current = true;
+          showToast(`🚨 Atenção: ${data.outdatedCount} cards com preços desatualizados (> 10%) em relação às Ligas!`, 'error');
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao auditar preços das Ligas:', err);
+    } finally {
+      setIsAuditingLigaPrices(false);
+    }
+  };
+
+  // Run automatically when AdminPage is mounted
+  React.useEffect(() => {
+    runLigaPriceAudit();
+  }, [cards.length]);
+
+  const outdatedLigaCards = React.useMemo(() => {
+    return ligaAuditItems.filter((item) => item.isOutdated);
+  }, [ligaAuditItems]);
+
+  const outdatedLigaMap = React.useMemo(() => {
+    const map = new Map<string, CardLigaAuditItem>();
+    ligaAuditItems.forEach((item) => map.set(item.id, item));
+    return map;
+  }, [ligaAuditItems]);
+
+  const handleApplySingleLigaPrice = (cardId: string, newPrice: number) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (card) {
+      onUpdatePriceAndStock(cardId, newPrice, card.stockQuantity);
+      showToast(`Preço de "${card.name}" ajustado para ${formatBRL(newPrice)} (cotação da Liga)!`, 'success');
+      setLigaAuditItems((prev) =>
+        prev.map((item) =>
+          item.id === cardId
+            ? {
+                ...item,
+                currentPrice: newPrice,
+                diffPercent: item.menorPrecoLiga > 0 ? Math.round(((newPrice - item.menorPrecoLiga) / item.menorPrecoLiga) * 1000) / 10 : 0,
+                isOutdated: false,
+                status: 'aligned',
+              }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleApplyBatchLigaPrices = (updates: { cardId: string; newPrice: number }[]) => {
+    if (updates.length === 0) return;
+    const updateMap = new Map<string, number>();
+    updates.forEach((u) => updateMap.set(u.cardId, u.newPrice));
+
+    const updatedCards = cards.map((c) => {
+      const np = updateMap.get(c.id);
+      if (np !== undefined) {
+        return {
+          ...c,
+          price: np,
+          originalPrice: c.originalPrice || c.price,
+        };
+      }
+      return c;
+    });
+
+    onImportCards(updatedCards);
+    showToast(`${updates.length} cards atualizados com sucesso para a cotação oficial da Liga!`, 'success');
+    setIsLigaPriceAuditOpen(false);
+    runLigaPriceAudit();
+  };
+
+  const handleCheckNewCardLiga = async () => {
+    if (!newCard.name || newCard.name.trim().length < 2) {
+      showToast('Digite o nome do card para consultar a cotação na Liga.', 'info');
+      return;
+    }
+    setIsCheckingNewCardLiga(true);
+    try {
+      const res = await fetch(`/api/liga-price?name=${encodeURIComponent(newCard.name.trim())}&game=${newCard.game || 'magic'}&rarity=${encodeURIComponent(newCard.rarity || 'Comum')}&setCode=${encodeURIComponent(newCard.setCode || '')}&cardNumber=${encodeURIComponent(newCard.cardNumber || '')}`);
+      const data = await res.json();
+      if (data.success) {
+        setLigaPriceInfo({
+          menorPreco: data.menorPreco,
+          precoMedio: data.precoMedio,
+          ligaUrl: data.ligaUrl,
+        });
+        showToast(`Cotação da Liga obtida! Menor: ${formatBRL(data.menorPreco)} | Médio: ${formatBRL(data.precoMedio)}`, 'success');
+      } else {
+        showToast('Não foi possível obter cotação automática da Liga.', 'error');
+      }
+    } catch {
+      showToast('Erro ao consultar cotação da Liga.', 'error');
+    } finally {
+      setIsCheckingNewCardLiga(false);
+    }
+  };
 
   // Liga Sheet Export Modal State
   const [isLigaExportOpen, setIsLigaExportOpen] = useState(false);
@@ -219,6 +336,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     stockQuantity: 1,
     description: '',
   });
+
+  // Debounced auto-fetch of Liga price when typing card in Cadastro Form
+  React.useEffect(() => {
+    if (!isAddingNew || !newCard.name || newCard.name.trim().length < 3) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/liga-price?name=${encodeURIComponent(newCard.name.trim())}&game=${newCard.game || 'magic'}&rarity=${encodeURIComponent(newCard.rarity || 'Comum')}&setCode=${encodeURIComponent(newCard.setCode || '')}&cardNumber=${encodeURIComponent(newCard.cardNumber || '')}&finishType=${encodeURIComponent(newCard.finishType || '')}`);
+        const data = await res.json();
+        if (data.success) {
+          setLigaPriceInfo({
+            menorPreco: data.menorPreco,
+            precoMedio: data.precoMedio,
+            ligaUrl: data.ligaUrl,
+          });
+          // Auto-fill price if 0 or default 35.00
+          setNewCard((prev) => (prev.price === 0 || prev.price === 35.00 ? { ...prev, price: data.menorPreco } : prev));
+        }
+      } catch {
+        // silent
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [isAddingNew, newCard.name, newCard.game, newCard.rarity, newCard.cardNumber, newCard.finishType]);
 
   // Settings Tab State
   const [configForm, setConfigForm] = useState<StoreConfig>({ ...config });
@@ -903,6 +1043,61 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               </div>
             )}
 
+            {/* Liga Price Audit Alert Banner upon entering the Admin */}
+            {outdatedLigaCards.length > 0 && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/50 via-slate-900 to-rose-950/40 border-2 border-amber-500/50 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in duration-300">
+                <div className="flex items-start gap-3.5">
+                  <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0 mt-0.5 shadow-md">
+                    <AlertTriangle className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-white font-display font-black text-sm sm:text-base tracking-tight">
+                        Atenção: {outdatedLigaCards.length} {outdatedLigaCards.length === 1 ? 'card está desatualizado' : 'cards estão desatualizados'} em relação às Ligas!
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/30 text-amber-300 border border-amber-500/50">
+                        Margem &gt; ±10%
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      Monitoramento oficial das Ligas (<strong className="text-white">LigaMagic</strong>, <strong className="text-white">LigaLorcana</strong>, <strong className="text-white">LigaOnePiece</strong>, <strong className="text-white">LigaPokemon</strong> e <strong className="text-white">Riftbound</strong>):
+                      {' '}
+                      <span className="text-amber-300 font-bold">
+                        {outdatedLigaCards.filter((c) => c.status === 'above').length} acima (&gt;+10%)
+                      </span>
+                      {' e '}
+                      <span className="text-cyan-300 font-bold">
+                        {outdatedLigaCards.filter((c) => c.status === 'below').length} abaixo (&gt;-10%)
+                      </span>
+                      .
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsLigaPriceAuditOpen(true)}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg transition-transform active:scale-95"
+                  >
+                    <Coins className="w-4 h-4 text-slate-950" />
+                    <span>Ver Auditoria & Ajustar Preços</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updates = outdatedLigaCards.map((c) => ({ cardId: c.id, newPrice: c.menorPrecoLiga }));
+                      handleApplyBatchLigaPrices(updates);
+                    }}
+                    className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/40 font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-colors shadow"
+                    title="Ajustar automaticamente todos os cards desatualizados para o Menor Preço da Liga"
+                  >
+                    <span>Alinhar Todos p/ Menor Liga</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* KPI Summary Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
@@ -1035,6 +1230,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
                   <span>Exportar Planilha Liga</span>
+                </button>
+
+                {/* 4.2. Auditoria de Preços Liga (±10% margin check) */}
+                <button
+                  type="button"
+                  onClick={() => setIsLigaPriceAuditOpen(true)}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border ${
+                    outdatedLigaCards.length > 0
+                      ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 ring-2 ring-amber-500/30'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="Auditoria de preços em tempo real com as cotações oficiais das Ligas (LigaMagic, LigaLorcana, LigaOnePiece, LigaPokemon, Riftbound)"
+                >
+                  <Coins className="w-4 h-4 text-amber-400" />
+                  <span>Auditoria Preços Liga</span>
+                  {outdatedLigaCards.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] animate-pulse">
+                      {outdatedLigaCards.length}
+                    </span>
+                  )}
                 </button>
 
                 {/* 4.5. Auditoria de Imagens e Fallback Visual */}
@@ -1274,6 +1489,55 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         </a>
                       </div>
                     )}
+
+                    {/* Real-time Liga Price Margin Check (±10% rule) */}
+                    {ligaPriceInfo && newCard.price > 0 && Math.abs(Math.round(((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 1000) / 10) > 10 && (
+                      <div className="mt-2 p-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs animate-in fade-in">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                          <span>
+                            Desatualizado da Liga ({((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 100 > 0 ? '+' : ''}
+                            {(Math.round(((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 1000) / 10).toFixed(1)}%)
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 mt-0.5">
+                          Menor na Liga: <strong className="text-white">{formatBRL(ligaPriceInfo.menorPreco)}</strong>. Margem recomendada: até ±10%.
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setNewCard((prev) => ({ ...prev, price: ligaPriceInfo.menorPreco }))}
+                            className="px-2 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] active:scale-95 shadow"
+                          >
+                            Usar Menor ({formatBRL(ligaPriceInfo.menorPreco)})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewCard((prev) => ({ ...prev, price: ligaPriceInfo.precoMedio }))}
+                            className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] active:scale-95 border border-slate-700"
+                          >
+                            Usar Médio ({formatBRL(ligaPriceInfo.precoMedio)})
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {ligaPriceInfo && newCard.price > 0 && Math.abs(Math.round(((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 1000) / 10) <= 10 && (
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>Preço alinhado com a Liga ({((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 100 > 0 ? '+' : ''}{(Math.round(((newCard.price - ligaPriceInfo.menorPreco) / ligaPriceInfo.menorPreco) * 1000) / 10).toFixed(1)}%)</span>
+                      </div>
+                    )}
+                    {!ligaPriceInfo && newCard.name && newCard.name.trim().length >= 2 && (
+                      <button
+                        type="button"
+                        onClick={handleCheckNewCardLiga}
+                        disabled={isCheckingNewCardLiga}
+                        className="mt-1 text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1"
+                      >
+                        {isCheckingNewCardLiga ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Coins className="w-2.5 h-2.5" />}
+                        <span>Consultar Cotação Oficial da Liga</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Stock Quantity */}
@@ -1498,6 +1762,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                           ? `https://www.ligapokemon.com.br/?view=cards/card&card=${encodeURIComponent(card.name)}`
                           : card.game === 'onepiece'
                           ? `https://www.ligaonepiece.com.br/?view=cards/card&card=${encodeURIComponent(card.name)}`
+                          : card.game === 'lorcana'
+                          ? `https://www.ligalorcana.com.br/?view=cards/card&card=${encodeURIComponent(card.name)}`
                           : `https://www.ligamagic.com.br/?view=cards/card&card=${encodeURIComponent(card.name)}`;
 
                       const isDeletingThis = deleteConfirmId === card.id;
@@ -1579,7 +1845,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                             </span>
                           </td>
 
-                          {/* Inline Price Editor with Liga link */}
+                          {/* Inline Price Editor with Liga link & Outdated Warning */}
                           <td className="py-3 px-4 text-center">
                             <div className="inline-flex items-center justify-center gap-1">
                               <span className="text-slate-400 font-bold">R$</span>
@@ -1599,11 +1865,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1 rounded text-slate-500 hover:text-amber-400 transition-colors"
-                                title={`Conferir menor preço de "${card.name}" na Liga`}
+                                title={`Conferir cotação de "${card.name}" na Liga oficial`}
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </a>
                             </div>
+
+                            {/* Liga Margin Outdated Badge & Quick Align */}
+                            {(() => {
+                              const audit = outdatedLigaMap.get(card.id);
+                              if (!audit || !audit.isOutdated) return null;
+                              return (
+                                <div className="mt-1 flex items-center justify-center gap-1">
+                                  <span
+                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-black ${
+                                      audit.status === 'above'
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                        : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                    }`}
+                                    title={`Desatualizado da Liga: Menor ${formatBRL(audit.menorPrecoLiga)} (${audit.diffPercent > 0 ? '+' : ''}${audit.diffPercent}%)`}
+                                  >
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    {audit.diffPercent > 0 ? `+${audit.diffPercent}%` : `${audit.diffPercent}%`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApplySingleLigaPrice(card.id, audit.menorPrecoLiga)}
+                                    className="px-1.5 py-0.2 rounded bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-[9px] font-bold transition-colors shadow-sm"
+                                    title={`Ajustar imediatamente para o Menor Preço da Liga (${formatBRL(audit.menorPrecoLiga)})`}
+                                  >
+                                    Alinhar
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </td>
 
                           {/* Inline Stock Quantity with Plus/Minus */}

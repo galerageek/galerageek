@@ -120,12 +120,17 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
                   onError={handleImageError}
                   className={`w-full h-full object-contain ${card.isFoil ? 'foil-shine' : ''}`}
                 />
-                {card.isFoil && (
+                {card.rarity === 'Enchanted' || (card.finishType && card.finishType.toLowerCase().includes('enchanted')) ? (
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-500 via-pink-400 to-amber-300 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    ENCHANTED
+                  </div>
+                ) : card.isFoil ? (
                   <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-400 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
                     FOIL
                   </div>
-                )}
+                ) : null}
               </>
             ) : (
               <CardFallbackPlaceholder card={card} variant="card" />

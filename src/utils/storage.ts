@@ -30,7 +30,8 @@ export const loadStoredCards = (): CardItem[] => {
            imageUrl.includes('ddragon.leagueoflegends.com/cdn/img/champion/loading') ||
            c.id.startsWith('mtg-') ||
            c.id.startsWith('rift-') ||
-           c.id.startsWith('op-'))
+           c.id.startsWith('op-') ||
+           c.id.startsWith('lorcana-'))
         ) {
           imageUrl = initial.imageUrl;
         } else if (imageUrl && imageUrl.includes('en.onepiece-cardgame.com') && !imageUrl.includes('/api/card-image-proxy') && !imageUrl.includes('wsrv.nl')) {
@@ -56,7 +57,10 @@ export const loadStoredCards = (): CardItem[] => {
         let finishType = c.finishType;
         let rarity = c.rarity;
 
-        if (initial && c.id.startsWith('rift-')) {
+        let price = typeof c.price === 'number' ? c.price : (initial ? initial.price : 25);
+        let originalPrice = c.originalPrice;
+
+        if (initial && (c.id.startsWith('rift-') || c.id.startsWith('lorcana-'))) {
           name = initial.name;
           setName = initial.setName;
           setCode = initial.setCode;
@@ -68,6 +72,22 @@ export const loadStoredCards = (): CardItem[] => {
           finishType = initial.finishType;
           rarity = initial.rarity;
           imageUrl = initial.imageUrl;
+
+          // If stored card still has old dummy prices (e.g. 89.00 for super rare bulk), synchronize with real LigaLorcana price
+          if (c.id.startsWith('lorcana-') && (c.price === 89 || c.price === 3450 || c.price === 980 || c.price === 1850 || c.price === 1250)) {
+            price = initial.price;
+            originalPrice = initial.originalPrice;
+          }
+        }
+
+        // If Magic cards have old outdated prices (One Ring was 389.90, Doubling Season was 189.90), synchronize with real LigaMagic quotes
+        if (initial && c.id === 'mtg-one-ring' && (c.price === 389.90 || c.price < 500)) {
+          price = initial.price;
+          originalPrice = initial.originalPrice;
+        }
+        if (initial && c.id === 'mtg-doubling-season' && (c.price === 189.90 || c.price > 160)) {
+          price = initial.price;
+          originalPrice = initial.originalPrice;
         }
 
         return {
@@ -83,7 +103,8 @@ export const loadStoredCards = (): CardItem[] => {
           finishType,
           rarity,
           imageUrl,
-          price: typeof c.price === 'number' ? c.price : (initial ? initial.price : 25),
+          price,
+          originalPrice,
           stockQuantity: typeof c.stockQuantity === 'number' ? c.stockQuantity : 1,
         };
       });

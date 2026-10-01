@@ -356,6 +356,14 @@ export const CardPrintsSelectorModal: React.FC<CardPrintsSelectorModalProps> = (
                           </div>
                         )}
 
+                        {/* Enchanted / Alternate Art Badge */}
+                        {(p.rarity === 'Enchanted' || (p.finishes && p.finishes.toLowerCase().includes('enchanted')) || p.name.includes('Enchanted')) && (
+                          <div className="absolute top-3 left-3 z-10 px-2 py-0.5 rounded-md bg-gradient-to-r from-purple-600 via-pink-500 to-amber-400 text-white font-black text-[9px] shadow-lg flex items-center gap-1 uppercase tracking-wider">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            Enchanted
+                          </div>
+                        )}
+
                         {/* Card Image */}
                         <div className="relative aspect-[63/88] w-full rounded-lg overflow-hidden bg-slate-900 mb-2 border border-slate-800">
                           <img
