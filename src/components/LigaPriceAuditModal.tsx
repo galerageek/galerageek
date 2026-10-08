@@ -38,7 +38,7 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
   onApplyBatchPrices,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<'outdated' | 'above' | 'below' | 'aligned' | 'all'>('outdated');
+  const [filterTab, setFilterTab] = useState<'outdated' | 'above' | 'below' | 'aligned' | 'all'>('all');
   const [gameFilter, setGameFilter] = useState<TCGGame | 'all'>('all');
   const [appliedCards, setAppliedCards] = useState<Set<string>>(new Set());
 
@@ -49,13 +49,26 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
   const belowItems = useMemo(() => auditItems.filter((i) => i.status === 'below'), [auditItems]);
   const alignedItems = useMemo(() => auditItems.filter((i) => i.status === 'aligned'), [auditItems]);
 
-  // Filtered Cards
+  // Adjust default tab when opened: if there are outdated items, show 'outdated', otherwise show 'all'
+  React.useEffect(() => {
+    if (isOpen) {
+      if (outdatedItems.length > 0) {
+        setFilterTab('outdated');
+      } else {
+        setFilterTab('all');
+      }
+    }
+  }, [isOpen, outdatedItems.length]);
+
+  // Filtered Cards with null-safe access
   const displayedItems = useMemo(() => {
     return auditItems.filter((item) => {
+      const q = (searchQuery || '').toLowerCase().trim();
       const matchesSearch = 
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.setName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.cardNumber.includes(searchQuery);
+        !q ||
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.setName || '').toLowerCase().includes(q) ||
+        (item.cardNumber || '').toLowerCase().includes(q);
 
       const matchesGame = gameFilter === 'all' || item.game === gameFilter;
 
@@ -98,7 +111,7 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
       <div 
         className="relative w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
@@ -119,7 +132,7 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                Monitoramento automático em relação aos menores preços da <strong className="text-white">LigaMagic</strong>, <strong className="text-white">LigaLorcana</strong>, <strong className="text-white">LigaOnePiece</strong>, <strong className="text-white">LigaPokemon</strong> e <strong className="text-white">Riftbound</strong>. Cards com diferença superior a 10% (para cima ou para baixo) são alertados abaixo para reajuste.
+                Monitoramento automático em relação aos menores preços da <strong className="text-white">LigaMagic</strong>, <strong className="text-white">LigaLorcana</strong>, <strong className="text-white">LigaOnePiece</strong>, <strong className="text-white">LigaPokemon</strong> e <strong className="text-white">LigaRiftbound</strong>. Cards com diferença superior a 10% (para cima ou para baixo) são alertados abaixo para reajuste.
               </p>
             </div>
           </div>
@@ -261,7 +274,7 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
             { id: 'lorcana', label: 'LigaLorcana' },
             { id: 'onepiece', label: 'LigaOnePiece' },
             { id: 'pokemon', label: 'LigaPokemon' },
-            { id: 'riftbound', label: 'Riftbound TCG' },
+            { id: 'riftbound', label: 'LigaRiftbound' },
           ].map((gf) => (
             <button
               key={gf.id}
@@ -286,10 +299,46 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
               <p className="text-xs text-slate-500">Calculando menor preço, preço médio e margens de 10%</p>
             </div>
           ) : displayedItems.length === 0 ? (
-            <div className="py-16 text-center space-y-2">
-              <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto" />
-              <p className="text-white font-bold text-sm">Nenhum card encontrado para este filtro.</p>
-              <p className="text-xs text-slate-500">Todos os cards selecionados estão com preço alinhado com as Ligas.</p>
+            <div className="py-16 text-center space-y-3">
+              <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
+              <p className="text-white font-bold text-base">
+                {filterTab === 'outdated' && totalAnalyzed > 0
+                  ? 'Nenhum card desatualizado no momento!'
+                  : 'Nenhum card encontrado para este filtro.'}
+              </p>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                {filterTab === 'outdated' && totalAnalyzed > 0
+                  ? `Excelente! Todos os ${totalAnalyzed} cards cadastrados na loja estão com preços dentro da margem oficial das Ligas (±10%).`
+                  : 'Todos os cards selecionados estão com preço alinhado com as cotações oficiais das Ligas.'}
+              </p>
+              {totalAnalyzed > 0 && filterTab !== 'all' && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterTab('all');
+                      setSearchQuery('');
+                      setGameFilter('all');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow"
+                  >
+                    <span>Ver todos os {totalAnalyzed} cards auditados</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              {totalAnalyzed === 0 && !isLoading && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={onRefreshAudit}
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-lg"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Executar Auditoria Agora</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             displayedItems.map((item) => {
@@ -331,7 +380,7 @@ export const LigaPriceAuditModal: React.FC<LigaPriceAuditModalProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider border ${gameMeta.accentBg}`}>
-                          {item.game === 'magic' ? 'LigaMagic' : item.game === 'lorcana' ? 'LigaLorcana' : item.game === 'onepiece' ? 'LigaOnePiece' : item.game === 'pokemon' ? 'LigaPokemon' : 'Riftbound'}
+                          {item.game === 'magic' ? 'LigaMagic' : item.game === 'lorcana' ? 'LigaLorcana' : item.game === 'onepiece' ? 'LigaOnePiece' : item.game === 'pokemon' ? 'LigaPokemon' : 'LigaRiftbound'}
                         </span>
                         <span className="text-[10px] font-mono text-slate-400">
                           {item.setCode} #{item.cardNumber}

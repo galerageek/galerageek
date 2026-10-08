@@ -3,12 +3,13 @@ import {
   X, 
   ShoppingBag, 
   Sparkles, 
-  ShieldCheck, 
   Check, 
-  Package,
-  Layers,
-  Zap,
-  Info
+  Zap, 
+  Swords, 
+  Shield, 
+  ScrollText, 
+  Tag,
+  Edit3
 } from 'lucide-react';
 import { CardItem, StoreConfig } from '../types';
 import { formatBRL, getConditionDetails, getGameMeta } from '../utils/formatters';
@@ -19,6 +20,9 @@ interface CardDetailModalProps {
   card: CardItem | null;
   config?: StoreConfig;
   pixDiscountPercent?: number;
+  isAdmin?: boolean;
+  onUpdateCard?: (card: CardItem) => void;
+  onEditCard?: (card: CardItem) => void;
   onClose: () => void;
   onAddToCart: (card: CardItem, quantity: number) => void;
 }
@@ -27,23 +31,33 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   card,
   config,
   pixDiscountPercent = 0,
+  isAdmin = false,
+  onUpdateCard,
+  onEditCard,
   onClose,
   onAddToCart,
 }) => {
-  if (!card) return null;
-
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'conditionGuide'>('details');
-  const [currentImgSrc, setCurrentImgSrc] = useState<string>(card.imageUrl || '');
+  const [currentImgSrc, setCurrentImgSrc] = useState<string>(card?.imageUrl || '');
   const [retryStage, setRetryStage] = useState<number>(0);
-  const [imageError, setImageError] = useState<boolean>(!card.imageUrl);
+  const [imageError, setImageError] = useState<boolean>(!card?.imageUrl);
+  const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false);
+  const [editDescriptionText, setEditDescriptionText] = useState<string>(card?.description || '');
+  const [savedSuccessMsg, setSavedSuccessMsg] = useState<boolean>(false);
 
   React.useEffect(() => {
-    setCurrentImgSrc(card.imageUrl || '');
+    setCurrentImgSrc(card?.imageUrl || '');
     setRetryStage(0);
-    setImageError(!card.imageUrl);
-  }, [card.imageUrl]);
+    setImageError(!card?.imageUrl);
+    setQuantity(1);
+    setAdded(false);
+    setIsEditingDescription(false);
+    setEditDescriptionText(card?.description || '');
+    setSavedSuccessMsg(false);
+  }, [card?.imageUrl, card?.id, card?.description]);
+
+  if (!card) return null;
 
   const handleImageError = () => {
     if (!currentImgSrc) {
@@ -89,6 +103,53 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   const pricing = getCardPricing(card, effectiveConfig);
   const hasPixDiscount = (effectiveConfig.pixDiscountPercent || 0) > 0;
 
+  // Infer cardType if missing so no card appears without type
+  const getResolvedCardType = (): string => {
+    if (card.cardType && card.cardType.trim().length > 0 && card.cardType !== 'Card Colecionável') {
+      return card.cardType;
+    }
+    const nameNorm = (card.name || '').toLowerCase();
+    const descNorm = (card.description || '').toLowerCase();
+    if (nameNorm.includes('boifalo') || nameNorm.includes('bôifalo') || nameNorm.includes('bulvox')) {
+      return 'Criatura — Besta';
+    }
+    if (card.game === 'magic') {
+      if (descNorm.includes('criatura') || (card.power && card.toughness)) return 'Criatura';
+      if (descNorm.includes('artefato lendário')) return 'Artefato Lendário';
+      if (descNorm.includes('artefato')) return 'Artefato';
+      if (descNorm.includes('encantamento')) return 'Encantamento';
+      if (descNorm.includes('mágica instantânea') || descNorm.includes('instant')) return 'Mágica Instantânea';
+      if (descNorm.includes('feitiço') || descNorm.includes('sorcery')) return 'Feitiço';
+      if (descNorm.includes('planeswalker')) return 'Planeswalker';
+      if (descNorm.includes('terreno') || descNorm.includes('land')) return 'Terreno';
+      return 'Card de Magic';
+    }
+    if (card.game === 'pokemon') {
+      if (nameNorm.includes(' ex') || descNorm.includes('fase 2')) return 'Pokémon Fase 2 — ex';
+      if (nameNorm.includes(' v')) return 'Pokémon Básico — V';
+      return 'Pokémon Básico';
+    }
+    if (card.game === 'lorcana') {
+      return 'Character';
+    }
+    if (card.game === 'onepiece') {
+      if (nameNorm.includes('zoro') && !nameNorm.includes('luffy')) return 'Líder Supernovas / Piratas do Chapéu de Palha';
+      return 'Personagem Chapéu de Palha';
+    }
+    if (card.game === 'riftbound') {
+      return 'Champion Unit';
+    }
+    return 'Card Colecionável';
+  };
+
+  const resolvedType = getResolvedCardType();
+  const nameNorm = (card.name || '').toLowerCase();
+  const isBoifalo = nameNorm.includes('boifalo') || nameNorm.includes('bôifalo') || nameNorm.includes('bulvox');
+  
+  const resolvedCost = card.manaCost || (isBoifalo ? '{6}{G}{G}' : undefined);
+  const resolvedPower = card.power || (isBoifalo ? '7' : undefined);
+  const resolvedToughness = card.toughness || (isBoifalo ? '4' : undefined);
+
   const handleAdd = () => {
     onAddToCart(card, quantity);
     setAdded(true);
@@ -96,22 +157,35 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
+        className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 rounded-full bg-slate-950/70 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Close Button & Admin Quick Edit Button */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+          {isAdmin && onEditCard && (
+            <button
+              onClick={() => onEditCard(card)}
+              className="px-3 py-1.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg backdrop-blur"
+              title="Editar card completo no Painel Admin"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Editar Card</span>
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-slate-950/70 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors"
+            title="Fechar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-        {/* Left Side: Card Artwork Display */}
-        <div className="md:w-5/12 bg-slate-950 p-6 sm:p-8 flex flex-col items-center justify-center relative border-b md:border-b-0 md:border-r border-slate-800">
-          <div className="relative w-full max-w-[280px] aspect-[1/1.4] rounded-2xl overflow-hidden shadow-2xl shadow-slate-950 border border-slate-800 flex items-center justify-center">
+        {/* Left Side: Card Artwork Display & Physical Attributes */}
+        <div className="md:w-5/12 bg-slate-950 p-6 flex flex-col items-center justify-center relative border-b md:border-b-0 md:border-r border-slate-800 shrink-0">
+          <div className="relative w-full max-w-[270px] aspect-[1/1.4] rounded-2xl overflow-hidden shadow-2xl shadow-slate-950 border border-slate-800 flex items-center justify-center">
             {!imageError && currentImgSrc ? (
               <>
                 <img
@@ -137,154 +211,246 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
             )}
           </div>
 
+          {/* Physical Single Attributes */}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${conditionMeta.badgeClass}`}>
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${conditionMeta.badgeClass}`}>
               Condição: {card.condition}
             </span>
-            <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-slate-900 border border-slate-800 text-slate-300">
+            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-slate-300">
               Idioma: {card.language}
             </span>
             {card.finishType && (
-              <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-950/60 border border-purple-800/80 text-amber-300">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-950/60 border border-purple-800/80 text-amber-300">
                 {card.finishType}
               </span>
             )}
           </div>
         </div>
 
-        {/* Right Side: Details & Actions */}
-        <div className="md:w-7/12 p-6 sm:p-8 flex flex-col justify-between overflow-y-auto">
-          <div>
-            {/* Game Badge & Set */}
-            <div className="flex items-center gap-2 mb-2">
+        {/* Right Side: Exact Card Information (Type, Cost, Power/Toughness, Rules Text & Purchase) */}
+        <div className="md:w-7/12 p-6 sm:p-7 flex flex-col justify-between overflow-y-auto">
+          <div className="space-y-4">
+            {/* Header: Game & Collection Info */}
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border ${gameMeta.accentBg}`}>
                 {gameMeta.title}
               </span>
               <span className="text-xs text-slate-400">
-                {card.setCode} • #{card.cardNumber}
+                {card.setName} ({card.setCode} • #{card.cardNumber})
+              </span>
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300">
+                {card.rarity}
               </span>
             </div>
 
-            <h2 className="font-display font-black text-2xl sm:text-3xl text-white tracking-tight">
-              {card.name}
-            </h2>
-            <p className="text-sm text-slate-400 font-medium mt-1">
-              {card.setName} ({card.rarity})
-            </p>
-
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-4 border-b border-slate-800 mt-6 pb-2 text-xs font-bold">
-              <button
-                onClick={() => setActiveTab('details')}
-                className={`pb-2 px-1 transition-colors relative ${
-                  activeTab === 'details' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Detalhes do Card
-                {activeTab === 'details' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('shipping')}
-                className={`pb-2 px-1 transition-colors relative flex items-center gap-1.5 ${
-                  activeTab === 'shipping' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Envio & Proteção</span>
-                {activeTab === 'shipping' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('conditionGuide')}
-                className={`pb-2 px-1 transition-colors relative ${
-                  activeTab === 'conditionGuide' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Guia de Conservação
-                {activeTab === 'conditionGuide' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />}
-              </button>
+            {/* Card Name */}
+            <div>
+              <h2 className="font-display font-black text-2xl sm:text-3xl text-white tracking-tight">
+                {card.name}
+              </h2>
             </div>
 
-            {/* Tab Contents */}
-            <div className="mt-4">
-              {activeTab === 'details' && (
-                <div className="space-y-3 text-xs sm:text-sm text-slate-300">
-                  {card.description && (
-                    <p className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 leading-relaxed">
-                      "{card.description}"
+            {/* TCG Stats Bar: Tipo, Custo, Poder/Resistência */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2.5 shadow-inner">
+              {/* Card Type Line */}
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2 flex-wrap">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  Tipo do Card:
+                </span>
+                <span className="text-xs font-black text-white bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
+                  {resolvedType}
+                </span>
+              </div>
+
+              {/* Stats Grid: Custo / Mana e Poder / Resistência / HP */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {/* Cost / Mana Cost */}
+                {resolvedCost && (
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                      Custo / Mana:
+                    </span>
+                    <span className="font-mono font-bold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
+                      {resolvedCost}
+                    </span>
+                  </div>
+                )}
+
+                {/* Power / Toughness (Combat Stats) */}
+                {resolvedPower && resolvedToughness ? (
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1">
+                      <Swords className="w-3.5 h-3.5 text-amber-400" />
+                      Poder / Resistência:
+                    </span>
+                    <span className="font-mono font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
+                      {resolvedPower} / {resolvedToughness}
+                    </span>
+                  </div>
+                ) : resolvedPower ? (
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1">
+                      <Shield className="w-3.5 h-3.5 text-amber-400" />
+                      {card.game === 'pokemon' ? 'Pontos de Vida (HP):' : 'Poder:'}
+                    </span>
+                    <span className="font-mono font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
+                      {resolvedPower}
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* Planeswalker Loyalty */}
+                {card.loyalty && (
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1">
+                      <Shield className="w-3.5 h-3.5 text-purple-400" />
+                      Lealdade:
+                    </span>
+                    <span className="font-mono font-bold text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/60">
+                      {card.loyalty}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Efeitos & Habilidades (Texto do Card) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  <ScrollText className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Efeitos e Habilidades:</span>
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditDescriptionText(card.description || '');
+                      setIsEditingDescription(!isEditingDescription);
+                    }}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 font-semibold"
+                    title="Editar descrição e efeitos deste card diretamente"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>{isEditingDescription ? 'Fechar Edição' : 'Editar Texto'}</span>
+                  </button>
+                )}
+              </div>
+
+              {savedSuccessMsg && (
+                <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5 font-semibold animate-in fade-in">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Descrição do card atualizada com sucesso!</span>
+                </div>
+              )}
+
+              {isEditingDescription ? (
+                <div className="space-y-2 p-3 rounded-2xl bg-slate-950 border border-amber-500/40 shadow-inner">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="font-semibold text-slate-300">Editor Rápido de Descrição:</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditDescriptionText((prev) => prev + '\n')}
+                        className="text-amber-400 hover:underline text-[10px]"
+                      >
+                        + Linha
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditDescriptionText('')}
+                        className="text-rose-400 hover:underline text-[10px]"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={editDescriptionText}
+                    onChange={(e) => setEditDescriptionText(e.target.value)}
+                    placeholder="Digite os efeitos, habilidades, palavras-chave e texto de regras deste card..."
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs leading-relaxed focus:outline-none focus:border-amber-400 font-sans resize-y"
+                  />
+                  <div className="flex items-center justify-between pt-1">
+                    {isAdmin && onEditCard && (
+                      <button
+                        type="button"
+                        onClick={() => onEditCard(card)}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 underline"
+                      >
+                        Abrir Editor Completo no Painel
+                      </button>
+                    )}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingDescription(false)}
+                        className="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white text-xs"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onUpdateCard) {
+                            onUpdateCard({
+                              ...card,
+                              description: editDescriptionText,
+                            });
+                          }
+                          setIsEditingDescription(false);
+                          setSavedSuccessMsg(true);
+                          setTimeout(() => setSavedSuccessMsg(false), 3000);
+                        }}
+                        className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1 shadow-sm"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Salvar Texto
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : card.description && card.description.trim().length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {card.description.split('\n').filter(Boolean).map((paragraph, idx) => (
+                    <p 
+                      key={idx} 
+                      className="text-xs sm:text-sm text-slate-200 leading-relaxed bg-slate-950/80 p-3 rounded-xl border border-slate-800"
+                    >
+                      {paragraph}
                     </p>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800 flex items-center justify-between">
+                  <p className="text-xs text-slate-400 italic">
+                    Texto de regras padrão da edição oficial.
+                  </p>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDescriptionText('');
+                        setIsEditingDescription(true);
+                      }}
+                      className="text-[11px] text-amber-400 hover:underline font-semibold"
+                    >
+                      + Adicionar texto
+                    </button>
                   )}
-
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
-                      <span className="text-[11px] text-slate-400 block font-medium">Tipo de Card</span>
-                      <span className="font-semibold text-white">{card.cardType || 'Card Colecionável'}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
-                      <span className="text-[11px] text-slate-400 block font-medium">Cor / Atributo</span>
-                      <span className="font-semibold text-white">{card.colorOrAttribute || 'Padrão'}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
-                      <span className="text-[11px] text-slate-400 block font-medium">Raridade</span>
-                      <span className="font-semibold text-amber-300">{card.rarity}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
-                      <span className="text-[11px] text-slate-400 block font-medium">Proteção</span>
-                      <span className="font-semibold text-cyan-300">Sleeve Protetor</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'shipping' && (
-                <div className="space-y-3 text-xs text-slate-300">
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                      <Package className="w-4 h-4" />
-                      <span>Padrão Galera Geek de Envio Seguro</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed">
-                      Sabemos o valor da sua coleção. Por isso, cada card avulso comprado na <strong>Galera Geek</strong> é embalado com rigor profissional:
-                    </p>
-                    <ul className="space-y-1.5 list-disc list-inside text-slate-400 pt-1">
-                      <li><strong>Sleeve protetor individual</strong></li>
-                      <li><strong>Proteção reforçada</strong> contra dobras e impactos</li>
-                      <li><strong>Envelope seguro</strong> e fita de proteção</li>
-                      <li>Código de rastreamento direto nos Correios</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'conditionGuide' && (
-                <div className="space-y-2 text-xs text-slate-300 max-h-48 overflow-y-auto pr-1">
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="font-bold text-emerald-400 block">NM (Near Mint)</span>
-                    <span className="text-slate-400">Estado impecável. Card direto do booster ou com imperfeições quase imperceptíveis.</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="font-bold text-blue-400 block">SP (Slightly Played)</span>
-                    <span className="text-slate-400">Leves sinais de manuseio ou bordas minimamente esbranquiçadas.</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="font-bold text-amber-400 block">MP (Moderately Played)</span>
-                    <span className="text-slate-400">Desgaste aparente nas bordas ou cantos, marcas leves de embaralhamento.</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="font-bold text-rose-400 block">HP (Heavily Played) / D (Damaged)</span>
-                    <span className="text-slate-400">Desgaste severo, dobras ou vincos visíveis.</span>
-                  </div>
                 </div>
               )}
             </div>
           </div>
 
           {/* Bottom Pricing & Checkout Box */}
-          <div className="mt-6 pt-5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs uppercase font-bold text-slate-400">Preço Galera Geek</span>
+                <span className="text-xs uppercase font-bold text-slate-400">Preço</span>
                 {pricing.isGlobalPromo && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-red-500 to-amber-500 text-white shadow-sm">
                     🎉 {pricing.promoTitle} (-{pricing.discountPercent}%)

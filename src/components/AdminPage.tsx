@@ -43,11 +43,15 @@ import {
   CheckCircle2,
   PartyPopper,
   Tag,
-  Percent
+  Percent,
+  X,
+  Edit3,
+  ScrollText
 } from 'lucide-react';
 import { CardItem, StoreConfig, TCGGame, CardCondition, CardLanguage, CardRarity, AdminUser, AdminRole, CardLigaAuditItem } from '../types';
 import { GaleraGeekLogo } from './GaleraGeekLogo';
 import { formatBRL, getGameMeta } from '../utils/formatters';
+import { cardMatchesQuery } from '../utils/searchMatcher';
 import { exportCatalogJSON } from '../utils/storage';
 import { CardCameraModal } from './CardCameraModal';
 import { CardPrintsSelectorModal } from './CardPrintsSelectorModal';
@@ -64,11 +68,14 @@ import {
 } from '../utils/imageVerification';
 import { optimizeImageForAnalysis } from '../utils/imageOptimizer';
 import { removeWhiteBackground, detectWhiteBackground, matchPageBackgroundColor } from '../utils/imageTransparency';
+import { INITIAL_CARDS } from '../data/initialCards';
 
 interface AdminPageProps {
   cards: CardItem[];
   config: StoreConfig;
   currentUser?: { username: string; role: AdminRole; name: string } | null;
+  initialEditCard?: CardItem | null;
+  onClearInitialEditCard?: () => void;
   onUpdatePriceAndStock: (cardId: string, price: number, stock: number) => void;
   onUpdateCard?: (updated: CardItem) => void;
   onDeleteCard: (cardId: string) => void;
@@ -84,6 +91,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   cards,
   config,
   currentUser,
+  initialEditCard,
+  onClearInitialEditCard,
   onUpdatePriceAndStock,
   onUpdateCard,
   onDeleteCard,
@@ -118,6 +127,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGameFilter, setSelectedGameFilter] = useState<TCGGame | 'all'>('all');
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [editingCard, setEditingCard] = useState<CardItem | null>(initialEditCard || null);
+  const [isVerifyingEditCardUrl, setIsVerifyingEditCardUrl] = useState(false);
+  const [editCardUrlStatus, setEditCardUrlStatus] = useState<ImageVerificationResult | null>(null);
+
+  React.useEffect(() => {
+    if (initialEditCard) {
+      setEditingCard({ ...initialEditCard });
+      if (onClearInitialEditCard) onClearInitialEditCard();
+    }
+  }, [initialEditCard]);
 
   // Camera, Prints & Auto-lookup States
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
@@ -152,11 +171,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [isLigaPriceAuditOpen, setIsLigaPriceAuditOpen] = useState(false);
   const [ligaAuditItems, setLigaAuditItems] = useState<CardLigaAuditItem[]>([]);
   const [isAuditingLigaPrices, setIsAuditingLigaPrices] = useState(false);
+  const [isCopiedSlug, setIsCopiedSlug] = useState(false);
   const hasNotifiedAdminOutdatedRef = React.useRef(false);
 
-  const runLigaPriceAudit = async () => {
+  const runLigaPriceAudit = async (silent = false) => {
     if (cards.length === 0) return;
     setIsAuditingLigaPrices(true);
+    if (!silent) {
+      showToast('Auditoria iniciada! Consultando cotações das Ligas em tempo real...', 'info');
+    }
     try {
       const res = await fetch('/api/check-all-liga-prices', {
         method: 'POST',
@@ -166,21 +189,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const data = await res.json();
       if (data.success && Array.isArray(data.cards)) {
         setLigaAuditItems(data.cards);
-        if (data.outdatedCount > 0 && !hasNotifiedAdminOutdatedRef.current) {
-          hasNotifiedAdminOutdatedRef.current = true;
-          showToast(`🚨 Atenção: ${data.outdatedCount} cards com preços desatualizados (> 10%) em relação às Ligas!`, 'error');
+        if (data.outdatedCount > 0) {
+          if (!silent || !hasNotifiedAdminOutdatedRef.current) {
+            hasNotifiedAdminOutdatedRef.current = true;
+            showToast(`🚨 Atenção: ${data.outdatedCount} cards com preços desatualizados (> 10%) em relação às Ligas!`, 'error');
+          }
+        } else if (!silent) {
+          showToast(`✅ Auditoria concluída! Todos os ${data.cards.length} cards estão alinhados com as cotações oficiais das Ligas.`, 'success');
         }
+      } else if (!silent) {
+        showToast('Não foi possível obter cotações da Liga no momento.', 'error');
       }
     } catch (err) {
       console.warn('Erro ao auditar preços das Ligas:', err);
+      if (!silent) {
+        showToast('Erro de conexão ao auditar cotações na Liga.', 'error');
+      }
     } finally {
       setIsAuditingLigaPrices(false);
     }
   };
 
-  // Run automatically when AdminPage is mounted
+  // Run automatically when AdminPage is mounted (silent check)
   React.useEffect(() => {
-    runLigaPriceAudit();
+    runLigaPriceAudit(true);
   }, [cards.length]);
 
   const outdatedLigaCards = React.useMemo(() => {
@@ -371,10 +403,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const outOfStockCount = cards.filter((c) => c.stockQuantity === 0).length;
 
   const filteredCards = cards.filter((c) => {
-    const matchesSearch = 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.setName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.cardNumber.includes(searchQuery);
+    const matchesSearch = cardMatchesQuery(c, searchQuery);
     const matchesGame = selectedGameFilter === 'all' || c.game === selectedGameFilter;
     return matchesSearch && matchesGame;
   });
@@ -414,10 +443,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       language: cardData.language || 'PT',
       isFoil: Boolean(cardData.isFoil),
       rarity: cardData.rarity || 'Comum',
+      cardType: cardData.cardType || '',
+      description: cardData.description || '',
+      manaCost: cardData.manaCost || '',
+      power: cardData.power || '',
+      toughness: cardData.toughness || '',
+      loyalty: cardData.loyalty || '',
+      defense: cardData.defense || '',
       price: resolvedPrice,
       originalPrice: resolvedMedio,
       stockQuantity: 1,
-      description: `Card identificado via câmera. Coleção ${cardData.setName || ''} #${cardData.cardNumber || ''}.`,
     });
 
     setLigaPriceInfo({
@@ -489,6 +524,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
   };
 
+  // Open art selector modal for card being edited
+  const handleOpenArtSelectorForEditCard = () => {
+    if (!editingCard || !editingCard.name) return;
+    setPrintsModalState({
+      isOpen: true,
+      cardId: editingCard.id,
+      name: editingCard.name.trim(),
+      game: (editingCard.game as TCGGame) || 'magic',
+      currentImageUrl: editingCard.imageUrl,
+    });
+  };
+
   // When user picks a print from the modal
   const handleSelectCardPrint = (selected: {
     imageUrl: string;
@@ -499,6 +546,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     language?: string;
     isFoil?: boolean;
   }) => {
+    // If currently editing in the Edit Card Modal, update the editing card form in place
+    if (editingCard && printsModalState.cardId === editingCard.id) {
+      setEditingCard((prev) => prev ? ({
+        ...prev,
+        imageUrl: selected.imageUrl,
+        ...(selected.setName ? { setName: selected.setName } : {}),
+        ...(selected.setCode ? { setCode: selected.setCode } : {}),
+        ...(selected.cardNumber ? { cardNumber: selected.cardNumber } : {}),
+        ...(selected.rarity ? { rarity: selected.rarity as any } : {}),
+        ...(selected.language ? { language: selected.language as any } : {}),
+        ...(selected.isFoil !== undefined ? { isFoil: selected.isFoil } : {}),
+      }) : null);
+      showToast('Arte oficial aplicada ao card em edição!', 'success');
+      return;
+    }
+
     if (printsModalState.cardId) {
       const cardId = printsModalState.cardId;
       const existing = cards.find((c) => c.id === cardId);
@@ -531,6 +594,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }));
       showToast('Arte oficial aplicada ao formulário!', 'success');
     }
+  };
+
+  const handleSaveEditedCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard) return;
+    if (!editingCard.name.trim()) {
+      showToast('O nome do card não pode ser vazio.', 'error');
+      return;
+    }
+    if (editingCard.price <= 0) {
+      showToast('O preço de venda deve ser maior que zero.', 'error');
+      return;
+    }
+    if (onUpdateCard) {
+      onUpdateCard(editingCard);
+    }
+    showToast(`Card "${editingCard.name}" atualizado com sucesso!`, 'success');
+    setEditingCard(null);
   };
 
   // Auto-search card details, high-res image, and Liga lowest price by name
@@ -573,6 +654,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           cardNumber: d.cardNumber || prev.cardNumber,
           rarity: d.rarity || prev.rarity,
           imageUrl: d.imageUrl || prev.imageUrl,
+          cardType: d.cardType || prev.cardType,
+          description: d.description || prev.description,
+          manaCost: d.manaCost || prev.manaCost,
+          power: d.power || prev.power,
+          toughness: d.toughness || prev.toughness,
+          loyalty: d.loyalty || prev.loyalty,
+          defense: d.defense || prev.defense,
           price: resolvedPrice,
           originalPrice: resolvedMedio,
         }));
@@ -626,7 +714,51 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       return;
     }
 
-    const resolvedImageUrl = getOptimizedImageUrl(newCard.imageUrl, (newCard.game as TCGGame) || 'magic');
+    const isBulvoxName = (n: string) => {
+      const lower = (n || '').toLowerCase();
+      return lower.includes('bulvox') || lower.includes('boifalo') || lower.includes('bôifalo');
+    };
+
+    // Prevent duplicate Titanic Bulvox / Bôifalo Titânico
+    if (isBulvoxName(newCard.name)) {
+      const existingBulvox = cards.find(
+        (c) => isBulvoxName(c.name) || c.id === 'mtg-boifalo-titanico' || c.id === 'mtg-titanic-bulvox'
+      );
+      if (existingBulvox) {
+        showToast('O Bôifalo Titânico (Titanic Bulvox) já existe no catálogo. Abrindo edição.', 'info');
+        setEditingCard({
+          ...existingBulvox,
+          imageUrl: existingBulvox.imageUrl || 'https://cards.scryfall.io/large/front/3/f/3f42c4d7-b555-449c-a539-119c1ae62232.jpg?1783944865',
+        });
+        setIsAddingNew(false);
+        return;
+      }
+    }
+
+    // Check if duplicate of another existing card
+    const existingSame = cards.find(
+      (c) => c.game === newCard.game && c.name.toLowerCase().trim() === newCard.name.toLowerCase().trim()
+    );
+    if (existingSame && (!newCard.imageUrl || newCard.imageUrl.trim() === '')) {
+      showToast(`O card "${newCard.name}" já está no catálogo. Abrindo edição do card existente.`, 'info');
+      setEditingCard(existingSame);
+      setIsAddingNew(false);
+      return;
+    }
+
+    let resolvedImageUrl = getOptimizedImageUrl(newCard.imageUrl, (newCard.game as TCGGame) || 'magic');
+    if (!resolvedImageUrl || resolvedImageUrl.trim() === '') {
+      if (isBulvoxName(newCard.name)) {
+        resolvedImageUrl = 'https://cards.scryfall.io/large/front/3/f/3f42c4d7-b555-449c-a539-119c1ae62232.jpg?1783944865';
+      } else {
+        const initMatch = INITIAL_CARDS.find(
+          (ic) => ic.game === newCard.game && ic.name.toLowerCase().trim() === newCard.name.toLowerCase().trim()
+        );
+        if (initMatch && initMatch.imageUrl) {
+          resolvedImageUrl = initMatch.imageUrl;
+        }
+      }
+    }
 
     const cardToAdd: CardItem = {
       id: `card-${Date.now()}`,
@@ -645,6 +777,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       originalPrice: newCard.originalPrice ? Number(newCard.originalPrice) : undefined,
       stockQuantity: Number(newCard.stockQuantity) || 1,
       description: newCard.description || '',
+      cardType: newCard.cardType || '',
+      manaCost: newCard.manaCost || '',
+      power: newCard.power || '',
+      toughness: newCard.toughness || '',
+      loyalty: newCard.loyalty || '',
+      defense: newCard.defense || '',
     };
 
     onAddCard(cardToAdd);
@@ -666,6 +804,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       originalPrice: 45.00,
       stockQuantity: 1,
       description: '',
+      cardType: '',
+      manaCost: '',
+      power: '',
+      toughness: '',
     });
     showToast(`Card "${cardToAdd.name}" adicionado ao catálogo com sucesso!`, 'success');
   };
@@ -1077,11 +1219,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsLigaPriceAuditOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg transition-transform active:scale-95"
+                    onClick={() => {
+                      setIsLigaPriceAuditOpen(true);
+                      if (ligaAuditItems.length === 0 && !isAuditingLigaPrices) {
+                        runLigaPriceAudit(false);
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg transition-transform active:scale-95 cursor-pointer"
                   >
-                    <Coins className="w-4 h-4 text-slate-950" />
-                    <span>Ver Auditoria & Ajustar Preços</span>
+                    <RefreshCw className={`w-4 h-4 text-slate-950 ${isAuditingLigaPrices ? 'animate-spin' : ''}`} />
+                    <span>{isAuditingLigaPrices ? 'Auditando Preços...' : 'Ver Auditoria & Ajustar Preços'}</span>
                   </button>
                   <button
                     type="button"
@@ -1235,17 +1382,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 {/* 4.2. Auditoria de Preços Liga (±10% margin check) */}
                 <button
                   type="button"
-                  onClick={() => setIsLigaPriceAuditOpen(true)}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border ${
+                  onClick={() => {
+                    setIsLigaPriceAuditOpen(true);
+                    if (ligaAuditItems.length === 0 && !isAuditingLigaPrices) {
+                      runLigaPriceAudit(false);
+                    }
+                  }}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95 border cursor-pointer ${
                     outdatedLigaCards.length > 0
                       ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 ring-2 ring-amber-500/30'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
-                  title="Auditoria de preços em tempo real com as cotações oficiais das Ligas (LigaMagic, LigaLorcana, LigaOnePiece, LigaPokemon, Riftbound)"
+                  title="Auditoria de preços em tempo real com as cotações oficiais das Ligas (LigaMagic, LigaLorcana, LigaOnePiece, LigaPokemon, LigaRiftbound)"
                 >
-                  <Coins className="w-4 h-4 text-amber-400" />
-                  <span>Auditoria Preços Liga</span>
-                  {outdatedLigaCards.length > 0 && (
+                  <RefreshCw className={`w-4 h-4 text-amber-400 ${isAuditingLigaPrices ? 'animate-spin' : ''}`} />
+                  <span>{isAuditingLigaPrices ? 'Auditando Preços...' : 'Auditoria Preços Liga'}</span>
+                  {outdatedLigaCards.length > 0 && !isAuditingLigaPrices && (
                     <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] animate-pulse">
                       {outdatedLigaCards.length}
                     </span>
@@ -1716,6 +1868,64 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   </div>
                 </div>
 
+                {/* Card Type, Mana Cost, Power & Toughness */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-slate-800/60">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold text-xs">Tipo do Card</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Criatura — Besta, Pokémon Fase 2..."
+                      value={newCard.cardType || ''}
+                      onChange={(e) => setNewCard({ ...newCard, cardType: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold text-xs">Custo / Mana</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: {6}{G}{G}, 4, 5..."
+                      value={newCard.manaCost || ''}
+                      onChange={(e) => setNewCard({ ...newCard, manaCost: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-300 block mb-1 font-semibold text-xs">Poder / HP</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 7, 330 HP"
+                        value={newCard.power || ''}
+                        onChange={(e) => setNewCard({ ...newCard, power: e.target.value })}
+                        className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 block mb-1 font-semibold text-xs">Resistência</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 4"
+                        value={newCard.toughness || ''}
+                        onChange={(e) => setNewCard({ ...newCard, toughness: e.target.value })}
+                        className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card Description / Oracle Text */}
+                <div>
+                  <label className="text-slate-300 block mb-1 font-semibold text-xs">Efeitos e Habilidades (Regras do Card)</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Texto completo de habilidades, efeitos, palavras-chave e regras do card..."
+                    value={newCard.description || ''}
+                    onChange={(e) => setNewCard({ ...newCard, description: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 leading-relaxed font-sans"
+                  />
+                </div>
+
                 {/* Form Buttons */}
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                   <button
@@ -1788,10 +1998,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                 </div>
                               </div>
                               <div>
-                                <span className="font-bold text-white text-xs block hover:text-amber-400 transition-colors">
-                                  {card.name}
-                                </span>
-                                <div className="flex items-center gap-1.5 mt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCard({ ...card })}
+                                  className="font-bold text-white text-xs block text-left hover:text-amber-400 transition-colors group/editname"
+                                  title="Clique para editar descrição, regras e dados deste card"
+                                >
+                                  <span>{card.name}</span>
+                                </button>
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                   <span className="text-[10px] text-slate-400 font-mono">
                                     #{card.cardNumber}
                                   </span>
@@ -1810,8 +2025,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                   )}
                                   <button
                                     type="button"
+                                    onClick={() => setEditingCard({ ...card })}
+                                    className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-0.5 font-semibold"
+                                    title="Editar descrição completa de regras e efeitos deste card"
+                                  >
+                                    <Edit3 className="w-2.5 h-2.5" />
+                                    <span>Editar</span>
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleOpenArtSelectorForExistingCard(card)}
-                                    className="text-[10px] text-amber-400/80 hover:text-amber-300 hover:underline flex items-center gap-0.5 ml-1"
+                                    className="text-[10px] text-amber-400/80 hover:text-amber-300 hover:underline flex items-center gap-0.5"
                                     title="Trocar imagem ou edição física"
                                   >
                                     <Layers className="w-2.5 h-2.5" />
@@ -1975,7 +2199,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                 </button>
                               </div>
                             ) : (
-                              <div className="inline-flex items-center gap-1">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCard({ ...card })}
+                                  className="px-2.5 py-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                                  title="Editar descrição completa, atributos TCG, regras, preços e estoque deste card"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenArtSelectorForExistingCard(card)}
@@ -2374,12 +2607,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         const slug = configForm.adminSlug || 'gerenciador-geek';
                         const fullUrl = `${window.location.origin}${window.location.pathname}#/${slug}`;
                         navigator.clipboard.writeText(fullUrl);
-                        alert(`Link secreto copiado para a área de transferência:\n${fullUrl}`);
+                        setIsCopiedSlug(true);
+                        setTimeout(() => setIsCopiedSlug(false), 2500);
                       }}
                       className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 shrink-0"
                     >
-                      <Copy className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Copiar Link Secreto</span>
+                      {isCopiedSlug ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Link Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Copiar Link Secreto</span>
+                        </>
+                      )}
                     </button>
                   </div>
                   <span className="text-[10px] text-amber-400/80 mt-1.5 block">
@@ -3048,6 +3291,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         onOpenArtSelectorForCard={handleOpenArtSelectorForExistingCard}
       />
 
+      {/* Liga Price Audit Modal (Real-time marketplace sync) */}
+      <LigaPriceAuditModal
+        isOpen={isLigaPriceAuditOpen}
+        onClose={() => setIsLigaPriceAuditOpen(false)}
+        auditItems={ligaAuditItems}
+        isLoading={isAuditingLigaPrices}
+        onRefreshAudit={runLigaPriceAudit}
+        onApplySinglePrice={handleApplySingleLigaPrice}
+        onApplyBatchPrices={handleApplyBatchLigaPrices}
+      />
+
       {/* Bulk Price Adjustment Modal */}
       {isBulkPriceModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -3181,6 +3435,468 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 Aplicar {bulkActionType === 'discount' ? '-' : '+'}{bulkPercent}% em {cards.filter(c => bulkTargetGame === 'all' || c.game === bulkTargetGame).length} cards
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Card Modal */}
+      {editingCard && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div 
+            className="relative w-full max-w-4xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-5 sm:px-7 border-b border-slate-800 flex items-center justify-between bg-slate-950/70 sticky top-0 z-20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-lg text-white">
+                    Editar Card: {editingCard.name}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Altere descrição dos efeitos e regras, atributos TCG, preços, estoque e fotos deste card
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditingCard(null)}
+                className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSaveEditedCard} className="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1 text-xs">
+              {/* Basic Identity & Physical Single Attributes */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>Identificação & Dados do Card</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-300 block mb-1 font-semibold">Nome do Card *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingCard.name}
+                      onChange={(e) => setEditingCard({ ...editingCard, name: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Jogo *</label>
+                    <select
+                      value={editingCard.game}
+                      onChange={(e) => setEditingCard({ ...editingCard, game: e.target.value as any })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="magic">Magic: The Gathering</option>
+                      <option value="pokemon">Pokémon TCG</option>
+                      <option value="lorcana">Disney Lorcana</option>
+                      <option value="riftbound">Riftbound TCG</option>
+                      <option value="onepiece">One Piece Card Game</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Raridade</label>
+                    <select
+                      value={editingCard.rarity}
+                      onChange={(e) => setEditingCard({ ...editingCard, rarity: e.target.value as any })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="Comum">Comum</option>
+                      <option value="Incomum">Incomum</option>
+                      <option value="Rara">Rara</option>
+                      <option value="Mítica">Mítica</option>
+                      <option value="Ultra Rara">Ultra Rara</option>
+                      <option value="Secret Rare">Secret Rare</option>
+                      <option value="Enchanted">Enchanted</option>
+                      <option value="Promo">Promo</option>
+                      <option value="Special">Special</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Coleção / Edição</label>
+                    <input
+                      type="text"
+                      value={editingCard.setName}
+                      onChange={(e) => setEditingCard({ ...editingCard, setName: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Código e Número</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="SET"
+                        value={editingCard.setCode}
+                        onChange={(e) => setEditingCard({ ...editingCard, setCode: e.target.value })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-amber-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Nº"
+                        value={editingCard.cardNumber}
+                        onChange={(e) => setEditingCard({ ...editingCard, cardNumber: e.target.value })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Estado de Conservação</label>
+                    <select
+                      value={editingCard.condition}
+                      onChange={(e) => setEditingCard({ ...editingCard, condition: e.target.value as any })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="NM">Near Mint (NM) - Impecável</option>
+                      <option value="SP">Slightly Played (SP) - Ótimo</option>
+                      <option value="MP">Moderately Played (MP) - Bom</option>
+                      <option value="HP">Heavily Played (HP) - Jogado</option>
+                      <option value="D">Damaged (D) - Danificado</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Idioma & Foil</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={editingCard.language}
+                        onChange={(e) => setEditingCard({ ...editingCard, language: e.target.value as any })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="PT">Português (PT)</option>
+                        <option value="EN">Inglês (EN)</option>
+                        <option value="JP">Japonês (JP)</option>
+                      </select>
+
+                      <label className="flex items-center gap-1.5 p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={editingCard.isFoil}
+                          onChange={(e) => setEditingCard({ ...editingCard, isFoil: e.target.checked })}
+                          className="rounded text-amber-500"
+                        />
+                        <span className="font-semibold">Foil</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Acabamento Específico</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Normal, Anime Borderless, Textured Foil..."
+                      value={editingCard.finishType || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, finishType: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Cor / Atributo</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Verde, Azul, Fogo, Ametista, Chaos..."
+                      value={editingCard.colorOrAttribute || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, colorOrAttribute: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* TCG Stats: Type, Mana/Cost, Power/Toughness */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-cyan-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Atributos TCG (Tipo, Custo e Poder)</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Tipo do Card *</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Criatura — Besta, Pokémon Fase 2, Feitiço..."
+                      value={editingCard.cardType || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, cardType: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Custo / Mana</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: {6}{G}{G}, 8 Tinta, 3 Energia, {C}{C} Recuo..."
+                      value={editingCard.manaCost || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, manaCost: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-300 block mb-1 font-semibold">Poder / HP</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 7, 330 HP..."
+                        value={editingCard.power || ''}
+                        onChange={(e) => setEditingCard({ ...editingCard, power: e.target.value })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-mono focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 block mb-1 font-semibold">Resistência / Defesa</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 4, 1 Power..."
+                        value={editingCard.toughness || ''}
+                        onChange={(e) => setEditingCard({ ...editingCard, toughness: e.target.value })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-amber-300 font-mono focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Lealdade (Planeswalker)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 4"
+                      value={editingCard.loyalty || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, loyalty: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-purple-300 font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Defesa Adicional (Batalha/Shield)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 5"
+                      value={editingCard.defense || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, defense: e.target.value })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-purple-300 font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Price and Stock */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-emerald-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>Preço de Venda e Estoque</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Preço de Venda (R$) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={editingCard.price}
+                      onChange={(e) => setEditingCard({ ...editingCard, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-emerald-400 font-bold focus:outline-none focus:border-emerald-500 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Preço Original / Riscado (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editingCard.originalPrice || ''}
+                      onChange={(e) => setEditingCard({ ...editingCard, originalPrice: parseFloat(e.target.value) || undefined })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 font-medium focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Estoque (Unidades) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={editingCard.stockQuantity}
+                      onChange={(e) => setEditingCard({ ...editingCard, stockQuantity: parseInt(e.target.value) || 0 })}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-emerald-500 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Artwork Display & Image URL */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                  <h4 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Imagem Real do Card & Scans Oficiais</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleOpenArtSelectorForEditCard}
+                    className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-colors"
+                  >
+                    <Layers className="w-3 h-3" />
+                    <span>Ver Artes & Scans Oficiais</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div 
+                    onClick={handleOpenArtSelectorForEditCard}
+                    className="relative group/thumb cursor-pointer shrink-0 w-16 h-22 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 group-hover/thumb:border-amber-500 transition-colors shadow-md"
+                    title="Clique para trocar imagem ou scan oficial"
+                  >
+                    <CardImageWithFallback
+                      card={editingCard}
+                      src={editingCard.imageUrl}
+                      variant="thumbnail"
+                      imgClassName="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 bg-black/60 rounded-xl text-[9px] text-amber-300 font-bold transition-opacity">
+                      Trocar
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={editingCard.imageUrl || ''}
+                        onChange={(e) => setEditingCard({ ...editingCard, imageUrl: e.target.value })}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!editingCard.imageUrl) return;
+                          setIsVerifyingEditCardUrl(true);
+                          const res = await verifyImageUrl(editingCard.imageUrl, (editingCard.game as TCGGame) || 'magic');
+                          setEditCardUrlStatus(res);
+                          setIsVerifyingEditCardUrl(false);
+                        }}
+                        disabled={!editingCard.imageUrl || isVerifyingEditCardUrl}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold shrink-0 border border-slate-700 flex items-center gap-1.5"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isVerifyingEditCardUrl ? 'animate-spin' : ''}`} />
+                        <span>Testar</span>
+                      </button>
+                    </div>
+
+                    {editCardUrlStatus && (
+                      <div className="text-[11px]">
+                        {editCardUrlStatus.ok ? (
+                          <span className="text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Imagem verificada e acessível online.
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-amber-400 font-semibold flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Imagem externa bloqueada ou inacessível.
+                            </span>
+                            {editCardUrlStatus.suggestedProxy && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (editCardUrlStatus.suggestedProxy) {
+                                    setEditingCard({ ...editingCard, imageUrl: editCardUrlStatus.suggestedProxy });
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold"
+                              >
+                                Usar Proxy Anti-Bloqueio
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Rules Description & Abilities (The main request from the user!) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                  <h4 className="font-bold text-amber-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <ScrollText className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Efeitos e Habilidades (Descrição Completa de Regras do Card)</span>
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCard({ ...editingCard, description: (editingCard.description || '') + '\n' })}
+                      className="text-[10px] text-slate-400 hover:text-white underline"
+                    >
+                      + Linha
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCard({ ...editingCard, description: '' })}
+                      className="text-[10px] text-rose-400 hover:text-rose-300 underline"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <textarea
+                    rows={6}
+                    required
+                    placeholder="Digite a descrição completa dos efeitos, habilidades ativadas, palavras-chave e regras deste card (ex: Atropelar, Metamorfose, Toque Mortífero, Shift, Ataques)..."
+                    value={editingCard.description || ''}
+                    onChange={(e) => setEditingCard({ ...editingCard, description: e.target.value })}
+                    className="w-full p-3.5 bg-slate-950 border border-slate-800 rounded-2xl text-slate-100 text-xs sm:text-sm leading-relaxed focus:outline-none focus:border-amber-500 font-sans resize-y"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    💡 Esta descrição é exibida integralmente aos clientes no modal de Detalhes do Card ao clicar no card na loja.
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3 sticky bottom-0 bg-slate-900/90 py-3 backdrop-blur">
+                <button
+                  type="button"
+                  onClick={() => setEditingCard(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg transition-transform active:scale-95 flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Alterações do Card</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

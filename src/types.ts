@@ -33,6 +33,11 @@ export interface CardItem {
   stockQuantity: number;
   description?: string;
   cardType?: string;
+  manaCost?: string;
+  power?: string;
+  toughness?: string;
+  loyalty?: string;
+  defense?: string;
   colorOrAttribute?: string;
   featured?: boolean;
 }

@@ -12,6 +12,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+      // Gracefully prevent unhandled WebSocket / Vite HMR transport disconnections from bubbling in AI Studio preview
+      window.addEventListener('unhandledrejection', function(event) {
+        var errStr = String(event.reason || '');
+        if (errStr.includes('WebSocket') || errStr.includes('@vite/client') || errStr.includes('moduleRunner')) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var errStr = String(event.message || '') + String(event.filename || '');
+        if (errStr.includes('WebSocket') || errStr.includes('@vite/client') || errStr.includes('moduleRunner')) {
+          event.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950 min-h-screen">
     <div id="root"></div>

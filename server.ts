@@ -1,7 +1,12 @@
+// Disable HMR in AI Studio preview to prevent WebSocket disconnection errors
+process.env.DISABLE_HMR = 'true';
+
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { INITIAL_CARDS } from './src/data/initialCards';
 
 const app = express();
 const PORT = 3000;
@@ -138,11 +143,13 @@ async function fetchLigaLowestPrice(
   if (isPokemon) baseUrl = 'https://www.ligapokemon.com.br';
   else if (isOnePiece) baseUrl = 'https://www.ligaonepiece.com.br';
   else if (isLorcana) baseUrl = 'https://www.ligalorcana.com.br';
+  else if (isRiftbound) baseUrl = 'https://www.ligariftbound.com.br';
 
   const queryName = englishName || cardName;
   const ligaUrl = `${baseUrl}/?view=cards/card&card=${encodeURIComponent(queryName)}`;
 
   const qLower = (englishName || cardName).toLowerCase().trim();
+  const qClean = qLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const numClean = cardNumber ? cardNumber.split('/')[0].replace(/^0+/, '') : '';
   const normRarity = (rarity || '').toLowerCase();
   const normFinish = (finishType || '').toLowerCase();
@@ -358,19 +365,35 @@ async function fetchLigaLowestPrice(
   // ----------------------------------------------------
   // 5. MAGIC: THE GATHERING (LigaMagic - ligamagic.com.br)
   // ----------------------------------------------------
+  // Specific staple benchmarks with finish awareness
+  if (qLower === 'the one ring' || qLower === 'o um anel' || qLower.includes('one ring') || qLower.includes('um anel')) {
+    const isSpecial = normFinish.includes('showcase') || normFinish.includes('borderless') || (normFinish.includes('foil') && !normFinish.includes('normal'));
+    const menor = isSpecial ? 649.00 : 449.00;
+    const medio = isSpecial ? 748.00 : 520.00;
+    return { menorPreco: menor, precoMedio: medio, ligaUrl };
+  }
+
+  if (
+    qLower.includes('doubling season') || 
+    qClean.includes('duplicacao') || 
+    qClean.includes('multiplicacao') ||
+    qLower.includes('duplicação') || 
+    qLower.includes('multiplicação')
+  ) {
+    const isAnimeOrBorderless = normFinish.includes('anime') || normFinish.includes('borderless') || normFinish.includes('showcase');
+    const menor = isAnimeOrBorderless ? 380.00 : 220.00;
+    const medio = isAnimeOrBorderless ? 450.00 : 260.00;
+    return { menorPreco: menor, precoMedio: medio, ligaUrl };
+  }
+
   // Known benchmark staples with official LigaMagic quotes
   const magicLigaBenchmarks: Record<string, { menor: number; medio: number }> = {
-    'the one ring': { menor: 649.00, medio: 748.00 },
-    'o um anel': { menor: 649.00, medio: 748.00 },
     'sheoldred, o apocalipse': { menor: 329.00, medio: 380.00 },
     'sheoldred, the apocalypse': { menor: 329.00, medio: 380.00 },
     'anel solar': { menor: 8.50, medio: 12.00 },
     'sol ring': { menor: 8.50, medio: 12.00 },
     'mana crypt': { menor: 649.00, medio: 750.00 },
     'cripta de mana': { menor: 649.00, medio: 750.00 },
-    'estação de duplicação': { menor: 98.00, medio: 135.00 },
-    'doubling season': { menor: 98.00, medio: 135.00 },
-    'temporada da multiplicação': { menor: 98.00, medio: 135.00 },
     'lightning bolt': { menor: 3.50, medio: 6.00 },
     'raio': { menor: 3.50, medio: 6.00 },
     'counterspell': { menor: 4.50, medio: 7.00 },
@@ -440,6 +463,30 @@ async function getOfficialRiftboundCards(): Promise<any[]> {
     console.warn('Failed to load official Riftbound cards gallery:', err);
   }
   return [];
+}
+
+/**
+ * Enrich card details with local catalog initial data if fields are missing
+ */
+function enrichWithInitialCards(result: any, cardName: string, game: string, englishName?: string) {
+  if (!result) return result;
+  const nameNorm = (cardName || '').toLowerCase().trim();
+  const engNorm = (englishName || '').toLowerCase().trim();
+  const match = INITIAL_CARDS.find((ic) => {
+    if (ic.game !== game) return false;
+    const icNorm = (ic.name || '').toLowerCase().trim();
+    return icNorm === nameNorm || (engNorm && icNorm === engNorm) || icNorm.includes(nameNorm) || nameNorm.includes(icNorm);
+  });
+
+  if (match) {
+    if (!result.cardType) result.cardType = match.cardType || '';
+    if (!result.description) result.description = match.description || '';
+    if (!result.manaCost) result.manaCost = match.manaCost || '';
+    if (!result.power) result.power = match.power || '';
+    if (!result.toughness) result.toughness = match.toughness || '';
+    if (!result.imageUrl && match.imageUrl) result.imageUrl = match.imageUrl;
+  }
+  return result;
 }
 
 /**
@@ -532,6 +579,14 @@ async function fetchCardDetails(
           cardObj.collector_number
         );
 
+        const cardType = cardObj.printed_type_line || cardObj.type_line || '';
+        const description = cardObj.printed_text || cardObj.oracle_text || '';
+        const manaCost = cardObj.mana_cost || '';
+        const power = cardObj.power || '';
+        const toughness = cardObj.toughness || '';
+        const loyalty = cardObj.loyalty || '';
+        const defense = cardObj.defense || '';
+
         return {
           name: cardObj.printed_name || cardObj.name,
           originalName: cardObj.name,
@@ -541,6 +596,13 @@ async function fetchCardDetails(
           rarity: cardRarity,
           imageUrl,
           game: 'magic',
+          cardType,
+          description,
+          manaCost,
+          power,
+          toughness,
+          loyalty,
+          defense,
           menorPrecoLiga: liga.menorPreco,
           precoMedioLiga: liga.precoMedio,
           ligaUrl: liga.ligaUrl,
@@ -562,7 +624,33 @@ async function fetchCardDetails(
             if (best && best.image) {
               const fullImg = `${best.image}/high.webp`;
               const liga = await fetchLigaLowestPrice(best.name || cardName, 'pokemon', rarity, aiEstimate);
-              return {
+              
+              let desc = '';
+              let hp = '';
+              let types = '';
+              try {
+                const detailRes = await fetch(`https://api.tcgdex.net/v2/pt/cards/${best.id}`);
+                if (detailRes.ok) {
+                  const dObj = await detailRes.json();
+                  hp = dObj.hp ? `${dObj.hp} HP` : '';
+                  types = dObj.types ? dObj.types.join('/') : '';
+                  const dParts: string[] = [];
+                  if (Array.isArray(dObj.abilities)) {
+                    dObj.abilities.forEach((a: any) => dParts.push(`Habilidade: ${a.name} — ${a.effect || ''}`));
+                  }
+                  if (Array.isArray(dObj.attacks)) {
+                    dObj.attacks.forEach((a: any) => {
+                      const cost = a.cost && a.cost.length > 0 ? ` [${a.cost.join('/')}]` : '';
+                      const dmg = a.damage ? ` — Dano: ${a.damage}` : '';
+                      const effect = a.effect ? ` (${a.effect})` : '';
+                      dParts.push(`Ataque: ${a.name}${cost}${dmg}${effect}`);
+                    });
+                  }
+                  desc = dParts.join('\n\n') || dObj.description || '';
+                }
+              } catch {}
+
+              return enrichWithInitialCards({
                 name: best.name || cardName,
                 originalName: best.name || cardName,
                 setName: 'Pokémon TCG (Brasil)',
@@ -571,10 +659,14 @@ async function fetchCardDetails(
                 rarity: rarity || 'Comum',
                 imageUrl: fullImg,
                 game: 'pokemon',
+                cardType: 'Pokémon',
+                description: desc,
+                manaCost: types,
+                power: hp,
                 menorPrecoLiga: liga.menorPreco,
                 precoMedioLiga: liga.precoMedio,
                 ligaUrl: liga.ligaUrl,
-              };
+              }, cardName, game, englishName);
             }
           }
         }
@@ -589,7 +681,28 @@ async function fetchCardDetails(
         if (data.data && data.data.length > 0) {
           const p = data.data[0];
           const liga = await fetchLigaLowestPrice(p.name, 'pokemon', p.rarity || rarity, aiEstimate);
-          return {
+          
+          const descParts: string[] = [];
+          if (Array.isArray(p.abilities)) {
+            p.abilities.forEach((a: any) => descParts.push(`Habilidade: ${a.name} — ${a.text || ''}`));
+          }
+          if (Array.isArray(p.attacks)) {
+            p.attacks.forEach((a: any) => {
+              const cost = a.cost && a.cost.length > 0 ? ` [${a.cost.join('/')}]` : '';
+              const dmg = a.damage ? ` — Dano: ${a.damage}` : '';
+              const txt = a.text ? ` (${a.text})` : '';
+              descParts.push(`Ataque: ${a.name}${cost}${dmg}${txt}`);
+            });
+          }
+          if (Array.isArray(p.rules)) {
+            p.rules.forEach((r: any) => descParts.push(`Regra: ${r}`));
+          }
+          const pDescription = descParts.join('\n\n') || p.flavorText || '';
+          const cardType = [p.supertype, ...(p.subtypes || [])].filter(Boolean).join(' — ') || 'Pokémon';
+          const power = p.hp ? `${p.hp} HP` : '';
+          const manaCost = (p.types || []).join('/');
+
+          return enrichWithInitialCards({
             name: p.name,
             originalName: p.name,
             setName: p.set?.name || 'Pokémon TCG',
@@ -598,10 +711,14 @@ async function fetchCardDetails(
             rarity: p.rarity || rarity || 'Comum',
             imageUrl: p.images?.large || p.images?.small || '',
             game: 'pokemon',
+            cardType,
+            description: pDescription,
+            manaCost,
+            power,
             menorPrecoLiga: liga.menorPreco,
             precoMedioLiga: liga.precoMedio,
             ligaUrl: liga.ligaUrl,
-          };
+          }, cardName, game, englishName);
         }
       }
     } catch (e) {
@@ -633,7 +750,7 @@ async function fetchCardDetails(
 
       const proxiedUrl = officialUrl ? `/api/card-image-proxy?url=${encodeURIComponent(officialUrl)}` : '';
       const liga = await fetchLigaLowestPrice(cardName, 'onepiece', rarity, aiEstimate, englishName, setCode, cardNumber);
-      return {
+      return enrichWithInitialCards({
         name: cardName,
         originalName: englishName || cardName,
         setName: setCode || 'One Piece Card Game',
@@ -645,7 +762,7 @@ async function fetchCardDetails(
         menorPrecoLiga: liga.menorPreco,
         precoMedioLiga: liga.precoMedio,
         ligaUrl: liga.ligaUrl,
-      };
+      }, cardName, game, englishName);
     } catch (opErr) {
       console.error('Error in One Piece lookup:', opErr);
     }
@@ -677,8 +794,14 @@ async function fetchCardDetails(
         const rawImg = matched.cardImage?.url;
         const imgUrl = rawImg ? `https://wsrv.nl/?url=${encodeURIComponent(rawImg)}&output=webp` : '';
 
+        const cardType = matched.type?.value?.label || matched.cardType || 'Campeão';
+        const description = matched.text || matched.description || (Array.isArray(matched.abilities) ? matched.abilities.map((a: any) => a.text).join('\n') : '') || '';
+        const manaCost = matched.cost !== undefined ? String(matched.cost) : '';
+        const power = matched.power !== undefined ? String(matched.power) : '';
+        const toughness = matched.health !== undefined ? String(matched.health) : '';
+
         const liga = await fetchLigaLowestPrice(matched.name, 'riftbound', rarityLabel, aiEstimate, cardTitle, setCode, String(matched.collectorNumber));
-        return {
+        return enrichWithInitialCards({
           name: cardTitle,
           originalName: cardTitle,
           setName,
@@ -687,14 +810,19 @@ async function fetchCardDetails(
           rarity: rarityLabel === 'Showcase' ? 'Special' : rarityLabel === 'Epic' ? 'Mítica' : 'Rara',
           imageUrl: imgUrl,
           game: 'riftbound',
+          cardType,
+          description,
+          manaCost,
+          power,
+          toughness,
           menorPrecoLiga: liga.menorPreco,
           precoMedioLiga: liga.precoMedio,
           ligaUrl: liga.ligaUrl,
-        };
+        }, cardName, game, englishName);
       }
 
       const liga = await fetchLigaLowestPrice(cardName, 'riftbound', rarity, aiEstimate);
-      return {
+      return enrichWithInitialCards({
         name: cardName,
         originalName: englishName || cardName,
         setName: setCode || 'Origins',
@@ -706,7 +834,7 @@ async function fetchCardDetails(
         menorPrecoLiga: liga.menorPreco,
         precoMedioLiga: liga.precoMedio,
         ligaUrl: liga.ligaUrl,
-      };
+      }, cardName, game, englishName);
     } catch (riftErr) {
       console.error('Error in Riftbound lookup:', riftErr);
     }
@@ -745,7 +873,14 @@ async function fetchCardDetails(
         const isEnchanted = l.rarity === 'Enchanted';
         const rarityLabel = isEnchanted ? 'Enchanted' : l.rarity === 'Super_rare' ? 'Super Rara' : l.rarity || rarity || 'Rare';
         const liga = await fetchLigaLowestPrice(fullName, 'lorcana', rarityLabel, aiEstimate, fullName, l.set?.code, l.collector_number);
-        return {
+        
+        const cardType = [l.type, ...(l.classifications || [])].filter(Boolean).join(' — ') || l.type || 'Personagem';
+        const description = l.text || (l.abilities ? l.abilities.map((a: any) => `${a.name}: ${a.effect}`).join('\n') : '') || '';
+        const manaCost = l.cost !== undefined ? String(l.cost) : '';
+        const power = l.strength !== undefined ? String(l.strength) : '';
+        const toughness = l.willpower !== undefined ? String(l.willpower) : '';
+
+        return enrichWithInitialCards({
           name: `${l.name}${l.version ? ' - ' + l.version : ''}${isEnchanted ? ' (Enchanted)' : ''}`,
           originalName: l.name,
           setName: l.set?.name || 'Disney Lorcana',
@@ -754,10 +889,15 @@ async function fetchCardDetails(
           rarity: rarityLabel,
           imageUrl: img,
           game: 'lorcana',
+          cardType,
+          description,
+          manaCost,
+          power,
+          toughness,
           menorPrecoLiga: liga.menorPreco,
           precoMedioLiga: liga.precoMedio,
           ligaUrl: liga.ligaUrl,
-        };
+        }, cardName, game, englishName);
       }
     } catch (lorcErr) {
       console.error('Error in Lorcana lookup:', lorcErr);
@@ -766,7 +906,7 @@ async function fetchCardDetails(
 
   // Fallback if not found via specific API:
   const liga = await fetchLigaLowestPrice(cardName, game, rarity, aiEstimate, englishName, setCode, cardNumber);
-  return {
+  return enrichWithInitialCards({
     name: cardName,
     originalName: englishName || cardName,
     setName: 'Coleção Oficial',
@@ -778,7 +918,7 @@ async function fetchCardDetails(
     menorPrecoLiga: liga.menorPreco,
     precoMedioLiga: liga.precoMedio,
     ligaUrl: liga.ligaUrl,
-  };
+  }, cardName, game, englishName);
 }
 
 // ----------------------------------------------------
@@ -812,14 +952,19 @@ Identifique com máxima precisão:
 8. "isFoil": Booleano (true se for brilhante/foil, false se normal).
 9. "language": Idioma do card ("PT", "EN", "JP").
 10. "condition": Condição aparente ("NM", "SP", "MP", "HP").
-11. "estimatedLowestPrice": Menor preço REAL de mercado brasileiro (LigaMagic / LigaPokemon / LigaOnePiece / LigaLorcana) para este card em Reais (BRL).
+11. "cardType": Tipo de carta (ex: "Criatura — Besta", "Mágica Instantânea", "Pokémon Básico", "Personagem", "Encantamento").
+12. "description": Texto completo com todas as regras, habilidades e efeitos impressos no card.
+13. "manaCost": Custo de mana, energia ou ink do card (se houver).
+14. "power": Poder / Força ou Pontos de Vida (HP) do card (se houver).
+15. "toughness": Resistência / Defesa do card (se houver).
+16. "estimatedLowestPrice": Menor preço REAL de mercado brasileiro (LigaMagic / LigaPokemon / LigaOnePiece / LigaLorcana) para este card em Reais (BRL).
     REGRAS DE PREÇO MÍNIMO PARA MAGIC:
     - Magic Comum: preço mínimo de R$ 0,25 (bulk/chaff comum deve ser 0.25).
     - Magic Incomum: preço mínimo de R$ 0,50 (incomum simples deve ser 0.50).
     - Magic Rara: preço mínimo de R$ 1,00 (rara simples deve ser 1.00).
     - Magic Mítica / Staples: mantenha seus valores reais de mercado (ex: 5.00, 15.00, 40.00+).
     - Para outros jogos (Pokémon, One Piece, etc), comuns partem de R$ 0,05 a R$ 0,25.
-12. "estimatedAvgPrice": Preço médio do card no mercado brasileiro em Reais.
+17. "estimatedAvgPrice": Preço médio do card no mercado brasileiro em Reais.
 
 Responda ESTRITAMENTE em formato JSON sem marcação markdown adicional, seguindo o esquema:
 {
@@ -833,6 +978,11 @@ Responda ESTRITAMENTE em formato JSON sem marcação markdown adicional, seguind
   "isFoil": false,
   "language": "PT",
   "condition": "NM",
+  "cardType": "Criatura — Besta",
+  "description": "Texto das regras do card",
+  "manaCost": "{6}{G}{G}",
+  "power": "7",
+  "toughness": "4",
   "estimatedLowestPrice": 0.25,
   "estimatedAvgPrice": 0.50
 }`;
@@ -896,6 +1046,13 @@ Responda ESTRITAMENTE em formato JSON sem marcação markdown adicional, seguind
         language: parsedData.language || 'PT',
         condition: parsedData.condition || 'NM',
         imageUrl: cardDetails.imageUrl || '',
+        cardType: cardDetails.cardType || parsedData.cardType || '',
+        description: cardDetails.description || parsedData.description || '',
+        manaCost: cardDetails.manaCost || parsedData.manaCost || '',
+        power: cardDetails.power || parsedData.power || '',
+        toughness: cardDetails.toughness || parsedData.toughness || '',
+        loyalty: cardDetails.loyalty || '',
+        defense: cardDetails.defense || '',
         price: finalPrice,
         menorPrecoLiga: finalPrice,
         precoMedioLiga: finalAvg,
@@ -1659,9 +1816,15 @@ app.post('/api/check-all-liga-prices', async (req, res) => {
 // VITE MIDDLEWARE & SERVER STARTUP
 // ----------------------------------------------------
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1673,7 +1836,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
 }

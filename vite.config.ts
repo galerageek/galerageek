@@ -6,7 +6,64 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     base: './',
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      {
+        name: 'vite-hmr-preview-mock',
+        transformIndexHtml: {
+          order: 'pre',
+          handler() {
+            return [
+              {
+                tag: 'script',
+                injectTo: 'head-prepend',
+                children: `
+(function() {
+  var OrigWS = window.WebSocket;
+  if (OrigWS) {
+    window.WebSocket = function(url, protocols) {
+      var isHmr = false;
+      if (typeof protocols === 'string' && protocols.indexOf('vite-hmr') !== -1) isHmr = true;
+      if (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) isHmr = true;
+      if (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite-hmr') !== -1)) isHmr = true;
+      if (isHmr) {
+        var target = new EventTarget();
+        var mock = {
+          readyState: 1,
+          OPEN: 1,
+          CONNECTING: 0,
+          CLOSING: 2,
+          CLOSED: 3,
+          send: function() {},
+          close: function() {},
+          addEventListener: target.addEventListener.bind(target),
+          removeEventListener: target.removeEventListener.bind(target),
+          dispatchEvent: target.dispatchEvent.bind(target),
+        };
+        setTimeout(function() {
+          var ev = new Event('open');
+          target.dispatchEvent(ev);
+          if (typeof mock.onopen === 'function') mock.onopen(ev);
+        }, 0);
+        return mock;
+      }
+      return new OrigWS(url, protocols);
+    };
+    window.WebSocket.prototype = OrigWS.prototype;
+    window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+    window.WebSocket.OPEN = OrigWS.OPEN;
+    window.WebSocket.CLOSING = OrigWS.CLOSING;
+    window.WebSocket.CLOSED = OrigWS.CLOSED;
+  }
+})();
+`,
+              },
+            ];
+          },
+        },
+      },
+      react(),
+      tailwindcss(),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

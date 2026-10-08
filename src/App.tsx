@@ -19,6 +19,12 @@ import {
   setStoredAdminAuth,
   getStoredAdminUser
 } from './utils/storage';
+import { normalizeSearchText } from './utils/formatters';
+import { 
+  cardMatchesQuery, 
+  cardMatchesTextFilter, 
+  normalizeText 
+} from './utils/searchMatcher';
 import { Navbar } from './components/Navbar';
 import { TopAnnouncementBar } from './components/TopAnnouncementBar';
 import { BannerHero } from './components/BannerHero';
@@ -59,6 +65,11 @@ export default function App() {
   // State: Filters
   const [selectedGame, setSelectedGame] = useState<TCGGame | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCardType, setSelectedCardType] = useState<string>('all');
+  const [minPrice, setMinPrice] = useState<number | ''>('');
+  const [maxPrice, setMaxPrice] = useState<number | ''>('');
+  const [pricePreset, setPricePreset] = useState<string>('all');
+  const [cardTextQuery, setCardTextQuery] = useState<string>('');
   const [selectedCondition, setSelectedCondition] = useState<CardCondition | 'all'>('all');
   const [selectedFoil, setSelectedFoil] = useState<'all' | 'foil' | 'non-foil'>('all');
   const [selectedLanguage, setSelectedLanguage] = useState<CardLanguage | 'all'>('all');
@@ -66,7 +77,84 @@ export default function App() {
 
   // State: Modals
   const [selectedCardForModal, setSelectedCardForModal] = useState<CardItem | null>(null);
+  const [adminInitialEditCard, setAdminInitialEditCard] = useState<CardItem | null>(null);
+  const [pendingEditCard, setPendingEditCard] = useState<CardItem | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Auto-deduplicate and clean up any redundant Titanic Bulvox or duplicate cards on mount
+  useEffect(() => {
+    setCards((prev) => {
+      const isBulvox = (c: CardItem) => {
+        const idLower = (c.id || '').toLowerCase();
+        const nameLower = (c.name || '').toLowerCase();
+        return idLower === 'mtg-boifalo-titanico' || 
+               idLower === 'mtg-titanic-bulvox' || 
+               nameLower.includes('bulvox') || 
+               nameLower.includes('boifalo') || 
+               nameLower.includes('bôifalo');
+      };
+
+      let keptBulvox = false;
+      let cleaned = prev.filter((c) => {
+        if (!isBulvox(c)) return true;
+        if (!keptBulvox) {
+          keptBulvox = true;
+          c.id = 'mtg-boifalo-titanico';
+          c.name = 'Bôifalo Titânico';
+          c.imageUrl = 'https://cards.scryfall.io/large/front/3/f/3f42c4d7-b555-449c-a539-119c1ae62232.jpg?1783944865';
+          c.cardType = 'Criatura — Besta';
+          c.manaCost = '{6}{G}{G}';
+          c.power = '7';
+          c.toughness = '4';
+          c.description = 'Atropelar (Trample)\nMetamorfose {4}{G}{G}{G} (Você pode baixar este card com a face voltada para baixo como uma criatura 2/2 por {3}. Volte sua face para cima a qualquer momento pagando seu custo de metamorfose). (With natural laws abandoned, excess thrives).';
+          return true;
+        }
+        return false;
+      });
+
+      // Deduplicate cards with the exact same ID
+      const seenIds = new Set<string>();
+      cleaned = cleaned.filter((c) => {
+        if (seenIds.has(c.id)) return false;
+        seenIds.add(c.id);
+        return true;
+      });
+
+      // Deduplicate cards with duplicate name and game if one has no image and one has an image
+      const byNameGame = new Map<string, CardItem[]>();
+      cleaned.forEach((c) => {
+        const key = `${c.game}:${(c.name || '').toLowerCase().trim()}`;
+        if (!byNameGame.has(key)) byNameGame.set(key, []);
+        byNameGame.get(key)!.push(c);
+      });
+
+      byNameGame.forEach((group) => {
+        if (group.length > 1) {
+          const withImg = group.filter((c) => c.imageUrl && c.imageUrl.trim() !== '');
+          const withoutImg = group.filter((c) => !c.imageUrl || c.imageUrl.trim() === '');
+          if (withImg.length > 0 && withoutImg.length > 0) {
+            const removeIds = new Set(withoutImg.map((c) => c.id));
+            cleaned = cleaned.filter((c) => !removeIds.has(c.id));
+          }
+        }
+      });
+
+      // Restore images from initial cards if missing
+      cleaned.forEach((c) => {
+        if (!c.imageUrl || c.imageUrl.trim() === '') {
+          const match = INITIAL_CARDS.find((ic) => 
+            ic.id === c.id || 
+            (ic.game === c.game && ic.name.toLowerCase().trim() === (c.name || '').toLowerCase().trim())
+          );
+          if (match && match.imageUrl) {
+            c.imageUrl = match.imageUrl;
+          }
+        }
+      });
+
+      return cleaned;
+    });
+  }, []);
 
   // Persist Catalog and Config changes
   useEffect(() => {
@@ -119,32 +207,78 @@ export default function App() {
     return counts;
   }, [cards]);
 
+  // Dynamically extract card types available for the current game selection (or all games)
+  const availableCardTypes = useMemo(() => {
+    const relevantCards = cards.filter((card) => selectedGame === 'all' || card.game === selectedGame);
+    const counts: Record<string, number> = {};
+
+    // Base root categories for fast filtering
+    const macroCategories = ['Artefato', 'Criatura', 'Encantamento', 'Pokémon', 'Champion Unit', 'Personagem', 'Líder'];
+    macroCategories.forEach((macro) => {
+      const matchCount = relevantCards.filter(
+        (c) => c.cardType && normalizeText(c.cardType).includes(normalizeText(macro))
+      ).length;
+      if (matchCount > 0) {
+        counts[macro] = matchCount;
+      }
+    });
+
+    // Specific sub-types
+    relevantCards.forEach((card) => {
+      if (card.cardType) {
+        const typeClean = card.cardType.trim();
+        // If it's already one of the macros, don't duplicate
+        if (!macroCategories.includes(typeClean)) {
+          counts[typeClean] = (counts[typeClean] || 0) + 1;
+        }
+      }
+    });
+
+    return Object.entries(counts)
+      .map(([type, count]) => ({
+        id: type,
+        label: type,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [cards, selectedGame]);
+
   // Filtered and sorted cards for store view
   const filteredCards = useMemo(() => {
     return cards.filter((card) => {
-      // Game filter
+      // 1. Game filter
       if (selectedGame !== 'all' && card.game !== selectedGame) return false;
 
-      // Search query filter
-      if (searchQuery.trim() !== '') {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesName = card.name.toLowerCase().includes(query);
-        const matchesSet = card.setName.toLowerCase().includes(query) || (card.setCode && card.setCode.toLowerCase().includes(query));
-        const matchesNumber = card.cardNumber.toLowerCase().includes(query);
-        const matchesDescription = card.description?.toLowerCase().includes(query);
-        if (!matchesName && !matchesSet && !matchesNumber && !matchesDescription) {
-          return false;
-        }
+      // 2. Card Type filter (supports broad macros like "Artefato" as well as specific types)
+      if (selectedCardType !== 'all') {
+        if (!card.cardType) return false;
+        const normType = normalizeText(card.cardType);
+        const normTarget = normalizeText(selectedCardType);
+        if (!normType.includes(normTarget)) return false;
       }
 
-      // Condition filter
+      // 3. Price range filter (minPrice / maxPrice)
+      if (minPrice !== '' && card.price < Number(minPrice)) return false;
+      if (maxPrice !== '' && card.price > Number(maxPrice)) return false;
+
+      // 4. Dedicated Card Text / Effect filter (rules, abilities, lore, description with synonym & stem support)
+      if (cardTextQuery.trim() !== '') {
+        if (!cardMatchesTextFilter(card, cardTextQuery)) return false;
+      }
+
+      // 5. General Search query filter (matches name, set, code, number, cardType, rules text, and description)
+      if (searchQuery.trim() !== '') {
+        if (!cardMatchesQuery(card, searchQuery)) return false;
+      }
+
+      // 6. Condition filter
       if (selectedCondition !== 'all' && card.condition !== selectedCondition) return false;
 
-      // Foil filter
+      // 7. Foil filter
       if (selectedFoil === 'foil' && !card.isFoil) return false;
       if (selectedFoil === 'non-foil' && card.isFoil) return false;
 
-      // Language filter
+      // 8. Language filter
       if (selectedLanguage !== 'all' && card.language !== selectedLanguage) return false;
 
       return true;
@@ -161,22 +295,54 @@ export default function App() {
           return (b.originalPrice || b.price) - (a.originalPrice || a.price);
       }
     });
-  }, [cards, selectedGame, searchQuery, selectedCondition, selectedFoil, selectedLanguage, sortBy]);
+  }, [
+    cards, 
+    selectedGame, 
+    selectedCardType, 
+    minPrice, 
+    maxPrice, 
+    cardTextQuery, 
+    searchQuery, 
+    selectedCondition, 
+    selectedFoil, 
+    selectedLanguage, 
+    sortBy
+  ]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (selectedGame !== 'all') count++;
     if (searchQuery.trim() !== '') count++;
+    if (selectedCardType !== 'all') count++;
+    if (minPrice !== '' || maxPrice !== '' || pricePreset !== 'all') count++;
+    if (cardTextQuery.trim() !== '') count++;
     if (selectedCondition !== 'all') count++;
     if (selectedFoil !== 'all') count++;
     if (selectedLanguage !== 'all') count++;
     if (sortBy !== 'featured') count++;
     return count;
-  }, [selectedGame, searchQuery, selectedCondition, selectedFoil, selectedLanguage, sortBy]);
+  }, [
+    selectedGame, 
+    searchQuery, 
+    selectedCardType, 
+    minPrice, 
+    maxPrice, 
+    pricePreset, 
+    cardTextQuery, 
+    selectedCondition, 
+    selectedFoil, 
+    selectedLanguage, 
+    sortBy
+  ]);
 
   const handleResetFilters = () => {
     setSelectedGame('all');
     setSearchQuery('');
+    setSelectedCardType('all');
+    setMinPrice('');
+    setMaxPrice('');
+    setPricePreset('all');
+    setCardTextQuery('');
     setSelectedCondition('all');
     setSelectedFoil('all');
     setSelectedLanguage('all');
@@ -289,6 +455,10 @@ export default function App() {
     setCurrentAdminUser(user);
     setStoredAdminAuth(remember, user);
     setIsAdminLoginOpen(false);
+    if (pendingEditCard) {
+      setAdminInitialEditCard(pendingEditCard);
+      setPendingEditCard(null);
+    }
     setCurrentView('admin');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -321,6 +491,8 @@ export default function App() {
           cards={cards}
           config={config}
           currentUser={currentAdminUser}
+          initialEditCard={adminInitialEditCard}
+          onClearInitialEditCard={() => setAdminInitialEditCard(null)}
           onUpdatePriceAndStock={handleUpdatePriceAndStock}
           onUpdateCard={handleUpdateCard}
           onDeleteCard={handleDeleteCard}
@@ -380,6 +552,17 @@ export default function App() {
           onSelectGame={setSelectedGame}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          selectedCardType={selectedCardType}
+          onCardTypeChange={setSelectedCardType}
+          availableCardTypes={availableCardTypes}
+          minPrice={minPrice}
+          maxPrice={maxPrice}
+          onMinPriceChange={setMinPrice}
+          onMaxPriceChange={setMaxPrice}
+          pricePreset={pricePreset}
+          onPricePresetChange={setPricePreset}
+          cardTextQuery={cardTextQuery}
+          onCardTextQueryChange={setCardTextQuery}
           selectedCondition={selectedCondition}
           onConditionChange={setSelectedCondition}
           selectedFoil={selectedFoil}
@@ -485,7 +668,7 @@ export default function App() {
                 <MessageCircle className="w-4 h-4" />
                 <span>(32) 99813-6130</span>
               </a>
-              {isAdminAuthenticated && (
+              {isAdminAuthenticated ? (
                 <button
                   onClick={handleOpenAdmin}
                   className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/40 transition-colors"
@@ -493,6 +676,15 @@ export default function App() {
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   <span>Painel ADM</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAdminLoginOpen(true)}
+                  className="flex items-center gap-1.5 text-slate-500 hover:text-amber-400 text-xs px-2.5 py-1 rounded-lg hover:bg-slate-900 transition-colors cursor-pointer"
+                  title="Acesso exclusivo para administradores e operadores da loja"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Área do Lojista</span>
                 </button>
               )}
             </div>
@@ -514,31 +706,50 @@ export default function App() {
       </footer>
 
       {/* Modals */}
-      <CardDetailModal
-        card={selectedCardForModal}
-        config={config}
-        pixDiscountPercent={config.pixDiscountPercent}
-        onClose={() => setSelectedCardForModal(null)}
-        onAddToCart={(c, qty) => handleAddToCart(c, qty)}
-      />
+      {selectedCardForModal && (
+        <CardDetailModal
+          card={selectedCardForModal}
+          config={config}
+          pixDiscountPercent={config.pixDiscountPercent}
+          isAdmin={isAdminAuthenticated}
+          onUpdateCard={handleUpdateCard}
+          onEditCard={(c) => {
+            if (isAdminAuthenticated) {
+              setAdminInitialEditCard(c);
+              setSelectedCardForModal(null);
+              setCurrentView('admin');
+            } else {
+              setPendingEditCard(c);
+              setSelectedCardForModal(null);
+              setIsAdminLoginOpen(true);
+            }
+          }}
+          onClose={() => setSelectedCardForModal(null)}
+          onAddToCart={(c, qty) => handleAddToCart(c, qty)}
+        />
+      )}
 
-      <CartDrawer
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        items={cart}
-        config={config}
-        onUpdateQuantity={handleUpdateCartQuantity}
-        onRemoveItem={handleRemoveCartItem}
-        onClearCart={handleClearCart}
-      />
+      {isCartOpen && (
+        <CartDrawer
+          isOpen={isCartOpen}
+          onClose={() => setIsCartOpen(false)}
+          items={cart}
+          config={config}
+          onUpdateQuantity={handleUpdateCartQuantity}
+          onRemoveItem={handleRemoveCartItem}
+          onClearCart={handleClearCart}
+        />
+      )}
 
-      <AdminLoginModal
-        isOpen={isAdminLoginOpen}
-        onClose={() => setIsAdminLoginOpen(false)}
-        expectedPassword={config.adminPassword || 'admin'}
-        users={config.adminUsers || []}
-        onSuccessLogin={handleAdminLoginSuccess}
-      />
+      {isAdminLoginOpen && (
+        <AdminLoginModal
+          isOpen={isAdminLoginOpen}
+          onClose={() => setIsAdminLoginOpen(false)}
+          expectedPassword={config.adminPassword || 'admin'}
+          users={config.adminUsers || []}
+          onSuccessLogin={handleAdminLoginSuccess}
+        />
+      )}
     </div>
   );
 }

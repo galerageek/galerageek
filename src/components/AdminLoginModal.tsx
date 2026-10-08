@@ -18,8 +18,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   users = [],
   onSuccessLogin,
 }) => {
-  if (!isOpen) return null;
-
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +26,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [lockCountdown, setLockCountdown] = useState(0);
+
+  if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -36,14 +36,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   onRemoveItem,
   onClearCart,
 }) => {
-  if (!isOpen) return null;
-
   const [shippingType, setShippingType] = useState<'carta' | 'pac' | 'sedex' | 'retirada'>('carta');
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao'>('pix');
   const [customerName, setCustomerName] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerNotes, setCustomerNotes] = useState('');
   const [copiedPix, setCopiedPix] = useState(false);
+
+  if (!isOpen) return null;
 
   // Totals calculation using storewide promo and payment rules
   const summary = calculateCartSummary(items, config, shippingType, paymentMethod);

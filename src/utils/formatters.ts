@@ -190,3 +190,11 @@ Poderiam confirmar a disponibilidade para eu enviar o comprovante? Obrigado!`;
 
   return encodeURIComponent(text);
 };
+
+export const normalizeSearchText = (text: string = ''): string => {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};

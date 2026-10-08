@@ -235,6 +235,11 @@ export const CardItemView: React.FC<CardItemViewProps> = ({
                 Normal
               </span>
             )}
+            {card.cardType && (
+              <span className="truncate text-amber-300/90 font-medium ml-auto max-w-[120px] text-[10px]" title={`Tipo: ${card.cardType}`}>
+                {card.cardType}
+              </span>
+            )}
           </div>
         </div>
 
