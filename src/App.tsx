@@ -78,7 +78,6 @@ export default function App() {
   // State: Modals
   const [selectedCardForModal, setSelectedCardForModal] = useState<CardItem | null>(null);
   const [adminInitialEditCard, setAdminInitialEditCard] = useState<CardItem | null>(null);
-  const [pendingEditCard, setPendingEditCard] = useState<CardItem | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Auto-deduplicate and clean up any redundant Titanic Bulvox or duplicate cards on mount
@@ -455,10 +454,6 @@ export default function App() {
     setCurrentAdminUser(user);
     setStoredAdminAuth(remember, user);
     setIsAdminLoginOpen(false);
-    if (pendingEditCard) {
-      setAdminInitialEditCard(pendingEditCard);
-      setPendingEditCard(null);
-    }
     setCurrentView('admin');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -668,7 +663,7 @@ export default function App() {
                 <MessageCircle className="w-4 h-4" />
                 <span>(32) 99813-6130</span>
               </a>
-              {isAdminAuthenticated ? (
+              {isAdminAuthenticated && (
                 <button
                   onClick={handleOpenAdmin}
                   className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/40 transition-colors"
@@ -676,15 +671,6 @@ export default function App() {
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   <span>Painel ADM</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setIsAdminLoginOpen(true)}
-                  className="flex items-center gap-1.5 text-slate-500 hover:text-amber-400 text-xs px-2.5 py-1 rounded-lg hover:bg-slate-900 transition-colors cursor-pointer"
-                  title="Acesso exclusivo para administradores e operadores da loja"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Área do Lojista</span>
                 </button>
               )}
             </div>
@@ -713,17 +699,11 @@ export default function App() {
           pixDiscountPercent={config.pixDiscountPercent}
           isAdmin={isAdminAuthenticated}
           onUpdateCard={handleUpdateCard}
-          onEditCard={(c) => {
-            if (isAdminAuthenticated) {
-              setAdminInitialEditCard(c);
-              setSelectedCardForModal(null);
-              setCurrentView('admin');
-            } else {
-              setPendingEditCard(c);
-              setSelectedCardForModal(null);
-              setIsAdminLoginOpen(true);
-            }
-          }}
+          onEditCard={isAdminAuthenticated ? (c) => {
+            setAdminInitialEditCard(c);
+            setSelectedCardForModal(null);
+            setCurrentView('admin');
+          } : undefined}
           onClose={() => setSelectedCardForModal(null)}
           onAddToCart={(c, qty) => handleAddToCart(c, qty)}
         />
